@@ -14,22 +14,26 @@ inclusion: always
 ### Backend
 - **Language**: Python 3
 - RESTful or GraphQL API
-- Containerized services
+- **Architecture**: Serverless-first (AWS Lambda)
+- **Database**: DynamoDB (single-table design)
+- **API Gateway**: AWS API Gateway with Lambda integration
 
 ### Infrastructure
 - **Cloud**: Cloud-agnostic design, AWS for initial implementation
 - **IaC**: AWS CDK or CloudFormation
-- **Containers**: Docker for containerization
-- **Local Development**: Full local testing capability required
+- **Serverless**: AWS Lambda, DynamoDB, API Gateway
+- **Local Development**: Full local testing capability required (LocalStack, SAM Local, or similar)
 
 ## Technology Selection Guidelines
 
 When choosing technologies:
+- Prioritize serverless and managed services to minimize operational overhead
 - Prioritize well-documented, actively maintained libraries
 - Consider security best practices from the start
 - Ensure accessibility compliance for user-facing features
 - Select tools that support property-based testing where applicable
 - Maintain modularity for potential service separation
+- Optimize for cost-efficiency (critical for early-stage product)
 
 ## Common Commands
 

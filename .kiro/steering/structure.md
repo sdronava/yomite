@@ -23,17 +23,16 @@ Organize the project with modularity in mind for potential service separation:
 ```
 .
 ├── services/
-│   ├── user-management/    # Sub-Project 1
-│   │   ├── src/           # Backend Python code
-│   │   ├── tests/         # Backend tests
-│   │   └── infrastructure/ # IaC for this service
+│   ├── user-management/    # Sub-Project 1 (Serverless)
+│   │   ├── src/           # Backend Python Lambda functions
+│   │   ├── tests/         # Backend tests (unit + property-based)
+│   │   └── infrastructure/ # IaC for Lambda, DynamoDB, API Gateway
 │   └── [future-services]/
 ├── frontend/              # Frontend application
 │   ├── src/
 │   └── tests/
 ├── infrastructure/        # Shared infrastructure
-├── docs/                  # Documentation
-└── docker/               # Container configurations
+└── docs/                  # Documentation
 ```
 
 ### Source Code

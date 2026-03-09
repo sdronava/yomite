@@ -17,7 +17,8 @@ The application follows a modular architecture with separate sub-projects that m
 
 - Git version control initialized
 - Kiro AI assistant configured
-- Initial scope: User Registration Service
+- Initial scope: User Registration Service (serverless architecture)
+- Architecture choice: Serverless-first approach due to cost optimization (89% savings vs container-based)
 
 ## Development Methodology
 
