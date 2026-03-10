@@ -38,8 +38,8 @@ This plan implements a serverless user registration and authentication service u
     - **Property 22: Database Error Handling**
     - **Validates: Requirements 11.3**
 
-- [ ] 3. Implement input validation and security utilities
-  - [ ] 3.1 Create InputValidator class
+- [x] 3. Implement input validation and security utilities
+  - [x] 3.1 Create InputValidator class
     - Implement email validation with regex
     - Implement provider validation (google, facebook, github)
     - Implement string sanitization (remove null bytes, control characters)
@@ -50,7 +50,7 @@ This plan implements a serverless user registration and authentication service u
     - **Property 16: Input Validation**
     - **Validates: Requirements 6.5**
 
-  - [ ] 3.3 Create session token generation utilities
+  - [x] 3.3 Create session token generation utilities
     - Implement generate_session_token() with 256-bit entropy
     - Implement hash_token() using SHA-256
     - Add token format versioning (v1.{random_string})
