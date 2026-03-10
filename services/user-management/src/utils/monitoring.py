@@ -1,4 +1,5 @@
 """Monitoring utilities for CloudWatch metrics and X-Ray tracing."""
+
 # mypy: ignore-errors
 
 import os
