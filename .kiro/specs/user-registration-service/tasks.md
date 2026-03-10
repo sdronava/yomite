@@ -1,8 +1,8 @@
-# Implementation Plan: User Registration Service (Serverless)
+# Implementation Plan: User Registration Service (Serverless with Cognito)
 
 ## Overview
 
-This plan implements a serverless user registration and authentication service using AWS Lambda, DynamoDB, and API Gateway. The service supports social login (Google, Facebook, GitHub), session management, and account linking. Implementation uses Python 3.11+, AWS SAM for infrastructure, and uvx for dependency management.
+This plan implements a serverless user registration and authentication service using AWS Cognito, Lambda, DynamoDB, and API Gateway. AWS Cognito handles social login (Google, Facebook) and JWT-based session management. Lambda functions focus on business logic (user profiles). Implementation uses Python 3.11+, AWS SAM for infrastructure, and pip for dependency management.
 
 ## Tasks
 
@@ -81,408 +81,219 @@ This plan implements a serverless user registration and authentication service u
 - [ ] 5. Checkpoint - Verify core utilities
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Implement OAuth client manager
-  - [ ] 6.1 Create OAuthClientManager class
-    - Implement get_authorization_url() for OAuth flow initiation
-    - Implement exchange_code_for_token() for authorization code exchange
-    - Implement get_user_profile() to fetch user data from providers
-    - Add secrets caching with TTL (5 minutes)
-    - Support Google, Facebook, and GitHub OAuth providers
-    - _Requirements: 1.1, 1.4, 3.1_
+- [x] 6. Implement user profile handler (Cognito-based)
+  - [x] 6.1 Create profile_handler Lambda function
+    - Implement lambda_handler(event, context) entry point
+    - Extract Cognito user context from API Gateway authorizer JWT claims
+    - Implement GET /profile endpoint (retrieve or create from Cognito data)
+    - Implement PUT /profile endpoint (update user profile)
+    - Store user profiles in DynamoDB (PK: USER#{sub}, SK: PROFILE)
+    - Add structured logging for profile operations
+    - Handle errors and return appropriate HTTP status codes
+    - _Requirements: 1.2, 1.5, 8.2, 12.1, 12.2, 12.3, 12.4, 12.5_
 
-  - [ ]* 6.2 Write property test for OAuth flow initiation
-    - **Property 1: OAuth Flow Initiation**
-    - **Validates: Requirements 1.1, 3.1**
+  - [ ]* 6.2 Write unit tests for profile handler
+    - Test GET /profile with existing profile
+    - Test GET /profile with new user (auto-create from Cognito)
+    - Test PUT /profile with valid updates
+    - Test error handling for invalid requests
+    - Mock Cognito JWT claims extraction
 
-  - [ ]* 6.3 Write property test for provider error propagation
-    - **Property 3: Provider Error Propagation**
-    - **Validates: Requirements 1.3**
+  - [ ]* 6.3 Write integration test for profile operations
+    - Test complete profile lifecycle (create, read, update)
+    - Test with mock Cognito authorizer context
+    - Verify DynamoDB operations
 
-  - [ ] 6.4 Create mock OAuth providers for testing
-    - Implement MockGoogleProvider, MockFacebookProvider, MockGitHubProvider
-    - Support success and error scenarios
-    - _Requirements: 9.2_
-
-- [ ] 7. Implement session manager
-  - [ ] 7.1 Create SessionManager class
-    - Implement create_session() with 24-hour expiration and TTL
-    - Implement validate_session() with client metadata verification
-    - Implement invalidate_session() for logout
-    - Implement rotate_token() for token rotation
-    - Store sessions in DynamoDB with hash as PK
-    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 5.1, 5.2, 7.2, 7.4, 7.5_
-
-  - [ ]* 7.2 Write property test for session creation
-    - **Property 8: Session Creation on Successful Authentication**
-    - **Validates: Requirements 3.2, 3.4**
-
-  - [ ]* 7.3 Write property test for session expiration
-    - **Property 11: Session Expiration Configuration**
-    - **Validates: Requirements 4.1, 7.5**
-
-  - [ ]* 7.4 Write property test for session validation
-    - **Property 12: Session Validation**
-    - **Validates: Requirements 4.2, 4.3, 4.4, 7.3**
-
-  - [ ]* 7.5 Write property test for session invalidation
-    - **Property 13: Session Invalidation on Logout**
-    - **Validates: Requirements 5.1, 5.2**
-
-  - [ ]* 7.6 Write property test for session metadata binding
-    - **Property 17: Session Metadata Binding**
-    - **Validates: Requirements 7.2**
-
-  - [ ]* 7.7 Write property test for token rotation
-    - **Property 18: Token Rotation**
-    - **Validates: Requirements 7.4**
-
-- [ ] 8. Implement registration service
-  - [ ] 8.1 Create RegistrationService class
-    - Implement register_with_provider() orchestration method
-    - Implement user lookup by email using DynamoDB GSI1 (EmailIndex)
-    - Implement new user account creation with PutItem
-    - Implement account linking logic for duplicate emails
-    - Add social identity linking with UpdateItem
-    - _Requirements: 1.1, 1.2, 1.5, 2.1, 2.2, 2.3, 2.4_
-
-  - [ ]* 8.2 Write property test for account creation
-    - **Property 2: Account Creation from Valid Credentials**
-    - **Validates: Requirements 1.2, 1.5**
-
-  - [ ]* 8.3 Write property test for account linking
-    - **Property 4: Account Linking for Duplicate Emails**
-    - **Validates: Requirements 2.1**
-
-  - [ ]* 8.4 Write property test for account linking notification
-    - **Property 5: Account Linking Notification**
-    - **Validates: Requirements 2.2**
-
-  - [ ]* 8.5 Write property test for duplicate provider error
-    - **Property 6: Duplicate Provider Registration Error**
-    - **Validates: Requirements 2.3**
-
-  - [ ]* 8.6 Write property test for database constraint enforcement
-    - **Property 21: Database Constraint Enforcement**
-    - **Validates: Requirements 11.5**
-
-- [ ] 9. Implement authentication service
-  - [ ] 9.1 Create AuthenticationService class
-    - Implement authenticate_with_provider() orchestration method
-    - Implement user lookup by email+provider using DynamoDB GSI2 (EmailProviderIndex)
-    - Integrate with OAuthClientManager for OAuth flow
-    - Integrate with SessionManager for session creation
-    - Handle user not found errors
-    - _Requirements: 3.1, 3.2, 3.3, 3.4_
-
-  - [ ]* 9.2 Write property test for authentication error on non-existent accounts
-    - **Property 9: Authentication Error for Non-Existent Accounts**
-    - **Validates: Requirements 3.3**
-
-  - [ ]* 9.3 Write property test for operation logging
-    - **Property 19: Operation Logging**
-    - **Validates: Requirements 8.1, 8.2, 8.3, 8.4**
-
-- [ ] 10. Checkpoint - Verify core services
+- [ ] 7. Checkpoint - Verify profile handler
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Implement Lambda handler: registration-handler
-  - [ ] 11.1 Create registration Lambda handler function
-    - Implement lambda_handler(event, context) entry point
-    - Parse API Gateway event (path parameters, body)
-    - Extract provider from path, oauth_code and redirect_uri from body
-    - Validate inputs using InputValidator
-    - Call RegistrationService.register_with_provider()
-    - Format API Gateway response with status code and JSON body
-    - Add structured logging for registration attempts
-    - Handle errors and return appropriate HTTP status codes
-    - _Requirements: 1.1, 1.2, 1.3, 8.2, 12.1, 12.2, 12.3, 12.4, 12.5_
+- [x] 8. Complete AWS SAM infrastructure template with Cognito
+  - [x] 8.1 Define Cognito User Pool in SAM template
+    - Configure User Pool with email verification
+    - Add Google Identity Provider integration
+    - Add Facebook Identity Provider integration
+    - Configure User Pool Client with OAuth settings
+    - Configure User Pool Domain for Hosted UI
+    - Set token validity (Access: 1h, ID: 1h, Refresh: 30d)
+    - _Requirements: 1.1, 3.1, 4.1, 10.1_
 
-  - [ ]* 11.2 Write integration test for registration flow
-    - Test successful registration with new email
-    - Test account linking with existing email
-    - Test duplicate provider error
-    - Test OAuth provider errors
-
-- [ ] 12. Implement Lambda handler: authentication-handler
-  - [ ] 12.1 Create authentication Lambda handler function
-    - Implement lambda_handler(event, context) entry point
-    - Parse API Gateway event (path parameters, body, headers)
-    - Extract provider, oauth_code, redirect_uri, client IP, user agent
-    - Validate inputs using InputValidator
-    - Call AuthenticationService.authenticate_with_provider()
-    - Format API Gateway response with session token
-    - Add structured logging for authentication attempts
-    - Handle errors and return appropriate HTTP status codes
-    - _Requirements: 3.1, 3.2, 3.3, 3.4, 8.3, 12.1, 12.2, 12.3, 12.4, 12.5_
-
-  - [ ]* 12.2 Write integration test for authentication flow
-    - Test successful authentication with existing account
-    - Test authentication error for non-existent account
-    - Test OAuth provider errors
-
-- [ ] 13. Implement Lambda handler: session-handler
-  - [ ] 13.1 Create session logout Lambda handler function
-    - Implement lambda_handler(event, context) entry point
-    - Parse API Gateway event (body with session_token)
-    - Validate session token format
-    - Call SessionManager.invalidate_session()
-    - Format API Gateway response with success status
-    - Add structured logging for logout events
-    - Handle errors and return appropriate HTTP status codes
-    - _Requirements: 5.1, 5.2, 5.3, 8.4, 12.1, 12.2, 12.3, 12.4, 12.5_
-
-  - [ ]* 13.2 Write property test for logout confirmation
-    - **Property 14: Logout Confirmation**
-    - **Validates: Requirements 5.3**
-
-- [ ] 14. Implement Lambda handler: validation-handler
-  - [ ] 14.1 Create session validation Lambda handler function
-    - Implement lambda_handler(event, context) entry point
-    - Parse API Gateway event (Authorization header, client IP, user agent)
-    - Extract session token from Bearer token
-    - Call SessionManager.validate_session()
-    - Format API Gateway response with validation result
-    - Add structured logging for validation failures
-    - Handle errors and return appropriate HTTP status codes
-    - Optimize for low latency (high-frequency operation)
-    - _Requirements: 4.2, 4.3, 4.4, 8.4, 12.1, 12.2, 12.3, 12.4, 12.5_
-
-  - [ ]* 14.2 Write integration test for session validation
-    - Test validation with valid token
-    - Test validation with expired token
-    - Test validation with invalid token
-    - Test validation with metadata mismatch
-
-- [ ] 15. Implement API response formatting and error codes
-  - [ ] 15.1 Create API response utilities
-    - Implement format_success_response() helper
-    - Implement format_error_response() helper
-    - Add request_id generation using context.aws_request_id
-    - Ensure all responses are valid JSON
-    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
-
-  - [ ]* 15.2 Write property test for JSON response format
-    - **Property 23: JSON Response Format**
-    - **Validates: Requirements 12.1**
-
-  - [ ]* 15.3 Write property test for success status codes
-    - **Property 24: Success Status Codes**
-    - **Validates: Requirements 12.2**
-
-  - [ ]* 15.4 Write property test for error status codes
-    - **Property 25: Error Status Codes**
-    - **Validates: Requirements 12.3, 12.4**
-
-  - [ ]* 15.5 Write property test for request tracing
-    - **Property 26: Request Tracing**
-    - **Validates: Requirements 12.5**
-
-- [ ] 16. Checkpoint - Verify all Lambda handlers
-  - Ensure all tests pass, ask the user if questions arise.
-
-- [ ] 17. Complete AWS SAM infrastructure template
-  - [ ] 17.1 Define DynamoDB table in SAM template
+  - [x] 8.2 Define DynamoDB table in SAM template (simplified)
     - Configure table with PK (String), SK (String)
-    - Add GSI1: EmailIndex (Email as PK, EntityType as SK)
-    - Add GSI2: EmailProviderIndex (EmailProviderKey as PK, CreatedAt as SK)
-    - Configure TTL attribute (ExpiresAt)
     - Set BillingMode to PAY_PER_REQUEST (on-demand)
     - Enable PointInTimeRecovery for production
     - Add appropriate tags (Environment, Service)
-    - _Requirements: 10.1, 10.3, 11.1, 11.4_
+    - Note: No GSIs needed (Cognito handles user lookup)
+    - Note: No TTL needed (no session storage)
+    - _Requirements: 10.1, 10.3, 11.1_
 
-  - [ ] 17.2 Define Lambda functions in SAM template
-    - Configure registration-handler (512 MB, 30s timeout, ARM64)
-    - Configure authentication-handler (512 MB, 30s timeout, ARM64)
-    - Configure session-handler (256 MB, 5s timeout, ARM64)
-    - Configure validation-handler (256 MB, 3s timeout, ARM64, provisioned concurrency: 2)
+  - [x] 8.3 Define Lambda function in SAM template
+    - Configure user-profile-handler (256 MB, 10s timeout, ARM64)
     - Add DynamoDB table permissions via IAM policies
-    - Add Secrets Manager permissions for OAuth credentials
-    - Configure environment variables (DYNAMODB_TABLE_NAME, ENVIRONMENT, LOG_LEVEL)
-    - Enable X-Ray tracing for all functions
+    - Configure environment variables (DYNAMODB_TABLE_NAME, USER_POOL_ID, ENVIRONMENT, LOG_LEVEL)
+    - Enable X-Ray tracing
     - _Requirements: 10.1, 10.3_
 
-  - [ ] 17.3 Define API Gateway in SAM template
+  - [x] 8.4 Define API Gateway with Cognito Authorizer
     - Configure HTTP API with CORS settings
-    - Define POST /auth/register/{provider} endpoint → registration-handler
-    - Define POST /auth/login/{provider} endpoint → authentication-handler
-    - Define POST /auth/logout endpoint → session-handler
-    - Define GET /auth/validate endpoint → validation-handler
+    - Configure Cognito Authorizer (validates JWT automatically)
+    - Define GET /profile endpoint → user-profile-handler
+    - Define PUT /profile endpoint → user-profile-handler
     - Configure throttling settings (burst: 100, rate: 50 RPS)
-    - Configure per-endpoint rate limits
     - Enable CloudWatch Logs for API Gateway
-    - _Requirements: 6.1, 6.2, 6.3, 6.4, 10.1, 10.3_
+    - _Requirements: 4.2, 6.1, 6.2, 6.3, 10.1, 10.3_
 
-  - [ ] 17.4 Define Lambda Layer for dependencies
-    - Create layers/dependencies/python/requirements.txt
-    - Include boto3, requests, hypothesis, pytest
-    - Configure layer in SAM template with Python 3.11 and ARM64
-    - _Requirements: 10.1_
-
-  - [ ] 17.5 Define CloudWatch Log Groups and Alarms
-    - Create log groups for each Lambda function
+  - [x] 8.5 Define CloudWatch Log Groups
+    - Create log group for user-profile-handler
     - Set retention periods (7 days dev, 30 days prod)
-    - Create alarm for registration errors (threshold: 5 in 5 minutes)
-    - Create alarm for validation latency (threshold: 1 second average)
     - _Requirements: 8.1_
 
-  - [ ] 17.6 Create environment-specific parameter files
-    - Create parameters/dev.json with development settings
-    - Create parameters/staging.json with staging settings
-    - Create parameters/prod.json with production settings
-    - Configure OAuth secret ARNs for each environment
-    - _Requirements: 10.2_
-
-  - [ ] 17.7 Create samconfig.toml for deployment configuration
-    - Configure default deployment parameters
-    - Add environment-specific configurations (dev, staging, prod)
+  - [ ] 8.6 Create environment-specific parameter files
+    - Create samconfig.toml with dev/staging/prod configurations
+    - Configure OAuth secret ARNs for each environment in Secrets Manager
     - Set stack names, regions, and capabilities
     - _Requirements: 10.1, 10.2_
 
-- [ ] 18. Implement rate limiting
-  - [ ] 18.1 Add API Gateway throttling configuration
-    - Configure account-level throttling (burst: 100, rate: 50 RPS)
-    - Configure per-endpoint throttling in SAM template
-    - Add 429 error response mapping
-    - _Requirements: 6.3, 6.4_
-
-  - [ ]* 18.2 Write property test for rate limiting enforcement
-    - **Property 15: Rate Limiting Enforcement**
-    - **Validates: Requirements 6.3, 6.4**
-
-- [ ] 19. Set up local development environment
-  - [ ] 19.1 Create docker-compose.yml for local services
+- [x] 9. Set up local development environment
+  - [x] 9.1 Create docker-compose.yml for local services
     - Add DynamoDB Local service (port 8000)
-    - Add LocalStack for Secrets Manager (optional)
     - Configure network and volumes
     - _Requirements: 9.1, 9.3_
 
-  - [ ] 19.2 Create local testing scripts
-    - Create scripts/setup-local-dynamodb.py to create local table
-    - Create scripts/seed-test-data.py for test data
-    - Create scripts/run-local-api.sh to start SAM Local
+  - [x] 9.2 Create local testing scripts
+    - Create scripts/setup-local-dynamodb.py to create local table (simplified)
     - _Requirements: 9.1, 9.4, 9.5_
 
-  - [ ] 19.3 Create local environment configuration
-    - Create .env.local with local configuration
-    - Document local OAuth provider setup (mock or real)
-    - Create README.md with local development instructions
+  - [x] 9.3 Create local environment configuration
+    - Create .env.example with Cognito configuration
+    - Document Cognito User Pool setup for local testing
     - _Requirements: 9.4_
 
-- [ ] 20. Implement monitoring and observability
-  - [ ] 20.1 Add X-Ray tracing to Lambda functions
+  - [ ] 9.4 Document local testing with Cognito
+    - Document Cognito Local setup or mocking strategy
+    - Create mock JWT tokens for local testing
+    - Document how to test profile handler locally
+    - _Requirements: 9.4_
+
+- [ ] 10. Implement monitoring and observability
+  - [ ] 10.1 Add X-Ray tracing to Lambda function
     - Import aws-xray-sdk and patch all libraries
     - Add @xray_recorder.capture decorators to key functions
     - Add metadata and annotations to traces
     - _Requirements: 8.1_
 
-  - [ ] 20.2 Implement custom CloudWatch metrics
+  - [ ] 10.2 Implement custom CloudWatch metrics
     - Create put_custom_metric() utility function
-    - Add metrics for registration success/failure
-    - Add metrics for authentication success/failure
-    - Add metrics for account linking events
-    - Add metrics for OAuth and DynamoDB latency
+    - Add metrics for profile operations (get, update)
+    - Add metrics for DynamoDB latency
+    - Add metrics for Cognito authorization failures
     - _Requirements: 8.1_
 
-  - [ ] 20.3 Create CloudWatch dashboard configuration
+  - [ ] 10.3 Create CloudWatch dashboard configuration
     - Define dashboard JSON with Lambda metrics
     - Add DynamoDB consumed capacity metrics
     - Add API Gateway request metrics
-    - Add custom business metrics
+    - Add Cognito User Pool metrics
     - Add log insights queries for recent errors
     - _Requirements: 8.1_
 
-- [ ] 21. Checkpoint - Verify infrastructure and monitoring
+- [ ] 11. Checkpoint - Verify infrastructure and monitoring
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 22. Create deployment and operations documentation
-  - [ ] 22.1 Create README.md with project overview
-    - Document architecture and technology stack
-    - Provide setup instructions for local development
+- [ ] 12. Create deployment and operations documentation
+  - [ ] 12.1 Update README.md with Cognito architecture
+    - Document Cognito-based authentication flow
+    - Provide OAuth provider setup instructions (Google, Facebook)
     - Document deployment procedures for each environment
-    - Include troubleshooting guide
+    - Include troubleshooting guide for Cognito issues
     - _Requirements: 9.4, 10.1_
 
-  - [ ] 22.2 Create DEPLOYMENT.md with deployment guide
+  - [ ] 12.2 Create DEPLOYMENT.md with deployment guide
     - Document prerequisites (AWS CLI, SAM CLI, credentials)
+    - Document Cognito User Pool setup steps
+    - Document OAuth provider configuration in AWS Secrets Manager
     - Provide step-by-step deployment instructions
     - Document environment-specific configurations
     - Include rollback procedures
     - _Requirements: 10.1, 10.2_
 
-  - [ ] 22.3 Create OPERATIONS.md with operational runbook
+  - [ ] 12.3 Create OPERATIONS.md with operational runbook
     - Document monitoring and alerting setup
-    - Provide troubleshooting procedures for common issues
+    - Provide troubleshooting procedures for Cognito issues
     - Document disaster recovery procedures
     - Include cost optimization recommendations
     - _Requirements: 8.1_
 
-  - [ ] 22.4 Update tech.md with actual dependencies
+  - [ ] 12.4 Update tech.md with actual dependencies
     - Document all Python dependencies and versions
-    - Document AWS services and configurations
+    - Document AWS services (Cognito, Lambda, DynamoDB, API Gateway)
     - Add common commands for build, test, deploy
     - _Requirements: 10.1_
 
-- [ ] 23. Create CI/CD pipeline configuration
-  - [ ] 23.1 Create GitHub Actions workflow
+- [ ] 13. Create CI/CD pipeline configuration
+  - [ ] 13.1 Create GitHub Actions workflow
     - Add workflow for linting (flake8) and type checking (mypy)
     - Add workflow for unit tests with coverage
-    - Add workflow for property-based tests
     - Add workflow for integration tests
     - Add workflow for deployment to staging (on develop branch)
     - Add workflow for deployment to production (on main branch)
     - _Requirements: 10.1, 10.2_
 
-  - [ ] 23.2 Configure test coverage reporting
+  - [ ] 13.2 Configure test coverage reporting
     - Set up pytest with coverage plugin
     - Configure codecov integration
     - Set minimum coverage threshold (80%)
     - _Requirements: 8.1_
 
-- [ ] 24. Implement security hardening
-  - [ ] 24.1 Create IAM policies with least privilege
+- [ ] 14. Implement security hardening
+  - [ ] 14.1 Create IAM policies with least privilege
     - Define Lambda execution role with minimal DynamoDB permissions
-    - Define Secrets Manager access policy for OAuth credentials
     - Add CloudWatch Logs permissions
     - Add X-Ray permissions
+    - Add Cognito User Pool read permissions (if needed)
     - _Requirements: 6.1, 6.2_
 
-  - [ ] 24.2 Configure secrets in AWS Secrets Manager
+  - [ ] 14.2 Configure OAuth secrets in AWS Secrets Manager
     - Create secrets for Google OAuth client ID and secret
     - Create secrets for Facebook OAuth client ID and secret
-    - Create secrets for GitHub OAuth client ID and secret
+    - Reference secrets in Cognito Identity Provider configuration
     - Document secret rotation procedures
     - _Requirements: 6.1_
 
-  - [ ] 24.3 Add security scanning to CI/CD
+  - [ ] 14.3 Add security scanning to CI/CD
     - Add dependency vulnerability scanning (safety, pip-audit)
     - Add SAST scanning for code (bandit)
     - Add secrets scanning (detect-secrets)
     - _Requirements: 6.5_
 
-- [ ] 25. Final integration testing and validation
-  - [ ] 25.1 Run complete end-to-end tests locally
-    - Test registration flow with all providers
-    - Test authentication flow with all providers
-    - Test account linking scenarios
-    - Test session lifecycle (create, validate, logout)
+- [ ] 15. Final integration testing and validation
+  - [ ] 15.1 Run complete end-to-end tests locally
+    - Test profile operations (GET, PUT) with mock Cognito JWT
     - Test error scenarios and edge cases
+    - Verify DynamoDB operations
 
-  - [ ] 25.2 Deploy to development environment
+  - [ ] 15.2 Deploy to development environment
     - Deploy SAM stack to AWS dev environment
-    - Verify all Lambda functions are created
+    - Verify Cognito User Pool is created
+    - Verify Identity Providers (Google, Facebook) are configured
+    - Verify Lambda function is created
     - Verify DynamoDB table is created with correct schema
     - Verify API Gateway endpoints are accessible
     - Run smoke tests against dev environment
 
-  - [ ] 25.3 Perform load testing
+  - [ ] 15.3 Test Cognito authentication flow
+    - Test Google OAuth login via Cognito Hosted UI
+    - Test Facebook OAuth login via Cognito Hosted UI
+    - Verify JWT tokens are issued correctly
+    - Test API calls with JWT tokens
+    - Verify API Gateway Cognito Authorizer validates tokens
+
+  - [ ] 15.4 Perform load testing
     - Use artillery or locust for load testing
-    - Test validation endpoint at 100 RPS
-    - Test authentication endpoint at 20 RPS
+    - Test profile endpoint at 50 RPS
     - Verify no throttling or errors under load
     - Monitor CloudWatch metrics during load test
 
-- [ ] 26. Final checkpoint - Production readiness
+- [ ] 16. Final checkpoint - Production readiness
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
@@ -490,11 +301,31 @@ This plan implements a serverless user registration and authentication service u
 - Tasks marked with `*` are optional property-based tests and can be skipped for faster MVP
 - Each task references specific requirements for traceability
 - Checkpoints ensure incremental validation at key milestones
-- Property tests validate universal correctness properties from the design document
 - Integration tests validate complete flows end-to-end
-- Use uvx for Python dependency management throughout the project
 - All Lambda functions use Python 3.11+ and ARM64 (Graviton2) for cost optimization
 - DynamoDB uses on-demand billing for cost efficiency at current scale
-- Provisioned concurrency (2 instances) only for validation-handler to minimize cold starts
 - Local development uses DynamoDB Local and SAM Local for production-like testing
 - Infrastructure as Code uses AWS SAM for simplified serverless deployment
+
+## Architecture Notes
+
+**Cognito-Based Authentication:**
+- AWS Cognito handles OAuth flows with social providers (Google, Facebook)
+- Cognito issues JWT tokens (ID, Access, Refresh) for authentication
+- API Gateway Cognito Authorizer validates JWT tokens automatically
+- No custom OAuth client code needed
+- No custom session management code needed
+- Lambda functions focus on business logic only (user profiles)
+
+**Simplified Infrastructure:**
+- Single Lambda function (user-profile-handler) for profile operations
+- Simplified DynamoDB table (no GSIs, no session storage)
+- Cognito User Pool with Identity Providers
+- API Gateway with Cognito Authorizer
+
+**Cost Optimization:**
+- Cognito: ~$5-10/month (50 MAU free tier)
+- Lambda: ~$3/month (1M requests free tier)
+- DynamoDB: ~$1/month (25 GB free tier)
+- API Gateway: ~$3/month (1M requests free tier)
+- Total: ~$15-25/month (with free tier benefits)
