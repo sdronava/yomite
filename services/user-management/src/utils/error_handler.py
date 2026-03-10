@@ -1,23 +1,15 @@
-"""Error handling utilities for DynamoDB and OAuth operations."""
+"""Error handling utilities for DynamoDB operations."""
 
+import json
 import time
 import functools
-from typing import Callable, Any, TypeVar, cast
+from typing import Callable, Any, TypeVar, cast, Dict
 from botocore.exceptions import ClientError
 from src.models.error_codes import ErrorCodes
 from src.models.entities import APIError
 
 # Type variable for decorator
 F = TypeVar('F', bound=Callable[..., Any])
-
-
-class OAuthError(Exception):
-    """Raised when OAuth operation fails."""
-    
-    def __init__(self, message: str, provider: str, details: Any = None):
-        super().__init__(message)
-        self.provider = provider
-        self.details = details
 
 
 class DynamoDBError(Exception):
@@ -69,29 +61,42 @@ def handle_dynamodb_error(error: ClientError, operation: str) -> APIError:
         )
 
 
-def handle_oauth_error(error: Exception, provider: str) -> APIError:
+def format_error_response(
+    status_code: int,
+    error_code: str,
+    message: str,
+    request_id: str = "",
+    details: Dict[str, Any] = None
+) -> Dict[str, Any]:
     """
-    Convert OAuth error to APIError.
+    Format error response for API Gateway.
     
     Args:
-        error: OAuth exception
-        provider: OAuth provider name
+        status_code: HTTP status code
+        error_code: Application error code
+        message: Error message
+        request_id: Request ID for tracing
+        details: Additional error details
         
     Returns:
-        APIError with appropriate code and message
+        API Gateway response dictionary
     """
-    if isinstance(error, OAuthError):
-        return APIError(
-            code=ErrorCodes.OAUTH_FAILED,
-            message=f"Authentication with {provider} failed: {str(error)}",
-            details={'provider': provider}
-        )
-    else:
-        return APIError(
-            code=ErrorCodes.OAUTH_FAILED,
-            message=f"Authentication with {provider} failed",
-            details={'provider': provider, 'error': str(error)}
-        )
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'X-Request-ID': request_id
+        },
+        'body': json.dumps({
+            'success': False,
+            'error': {
+                'code': error_code,
+                'message': message,
+                'details': details
+            },
+            'request_id': request_id
+        })
+    }
 
 
 def retry_with_backoff(
@@ -197,16 +202,17 @@ def get_http_status_code(error_code: str) -> int:
         HTTP status code
     """
     status_map = {
-        ErrorCodes.INVALID_PROVIDER: 400,
         ErrorCodes.VALIDATION_ERROR: 400,
-        ErrorCodes.ACCOUNT_EXISTS: 409,
-        ErrorCodes.USER_NOT_FOUND: 401,
+        ErrorCodes.INVALID_INPUT: 400,
+        ErrorCodes.UNAUTHORIZED: 401,
+        ErrorCodes.FORBIDDEN: 403,
+        ErrorCodes.NOT_FOUND: 404,
+        ErrorCodes.ALREADY_EXISTS: 409,
         ErrorCodes.INVALID_TOKEN: 401,
         ErrorCodes.EXPIRED_TOKEN: 401,
-        ErrorCodes.METADATA_MISMATCH: 401,
-        ErrorCodes.OAUTH_FAILED: 401,
         ErrorCodes.RATE_LIMIT_EXCEEDED: 429,
         ErrorCodes.SERVER_ERROR: 500,
+        ErrorCodes.DATABASE_ERROR: 500,
     }
     
     return status_map.get(error_code, 500)

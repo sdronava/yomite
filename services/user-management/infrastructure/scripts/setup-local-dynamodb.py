@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setup local DynamoDB table for development."""
+"""Setup local DynamoDB table for development with Cognito architecture."""
 
 import boto3
 from botocore.exceptions import ClientError
@@ -7,10 +7,10 @@ from botocore.exceptions import ClientError
 # Local DynamoDB configuration
 ENDPOINT_URL = "http://localhost:8000"
 REGION = "us-east-1"
-TABLE_NAME = "yomite-user-registration-local"
+TABLE_NAME = "yomite-user-data-local"
 
 def create_table():
-    """Create DynamoDB table with GSIs for local development."""
+    """Create simplified DynamoDB table for Cognito-based authentication."""
     dynamodb = boto3.client(
         'dynamodb',
         endpoint_url=ENDPOINT_URL,
@@ -28,7 +28,7 @@ def create_table():
         if e.response['Error']['Code'] != 'ResourceNotFoundException':
             raise
     
-    # Create table
+    # Create simplified table (Cognito handles auth, no session storage needed)
     print(f"Creating table '{TABLE_NAME}'...")
     
     dynamodb.create_table(
@@ -39,27 +39,7 @@ def create_table():
         ],
         AttributeDefinitions=[
             {'AttributeName': 'PK', 'AttributeType': 'S'},
-            {'AttributeName': 'SK', 'AttributeType': 'S'},
-            {'AttributeName': 'Email', 'AttributeType': 'S'},
-            {'AttributeName': 'EmailProviderKey', 'AttributeType': 'S'}
-        ],
-        GlobalSecondaryIndexes=[
-            {
-                'IndexName': 'EmailIndex',
-                'KeySchema': [
-                    {'AttributeName': 'Email', 'KeyType': 'HASH'},
-                    {'AttributeName': 'SK', 'KeyType': 'RANGE'}
-                ],
-                'Projection': {'ProjectionType': 'ALL'}
-            },
-            {
-                'IndexName': 'EmailProviderIndex',
-                'KeySchema': [
-                    {'AttributeName': 'EmailProviderKey', 'KeyType': 'HASH'},
-                    {'AttributeName': 'SK', 'KeyType': 'RANGE'}
-                ],
-                'Projection': {'ProjectionType': 'ALL'}
-            }
+            {'AttributeName': 'SK', 'AttributeType': 'S'}
         ],
         BillingMode='PAY_PER_REQUEST'
     )
@@ -69,8 +49,9 @@ def create_table():
     print(f"  - Endpoint: {ENDPOINT_URL}")
     print(f"  - Table Name: {TABLE_NAME}")
     print(f"  - Primary Key: PK (HASH), SK (RANGE)")
-    print(f"  - GSI1: EmailIndex (Email, SK)")
-    print(f"  - GSI2: EmailProviderIndex (EmailProviderKey, SK)")
+    print(f"  - Billing Mode: PAY_PER_REQUEST")
+    print("\nNote: Cognito handles authentication and session management.")
+    print("This table stores user profiles and application data only.")
 
 if __name__ == '__main__':
     create_table()

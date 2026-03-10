@@ -1,1 +1,8 @@
-{"specId": "fdeba0ae-9381-4ef1-a1c6-96b6a0cf066c", "workflowType": "requirements-first", "specType": "feature"}
+{
+  "specType": "feature",
+  "workflowType": "requirements-first",
+  "featureName": "user-registration-service",
+  "architecture": "cognito",
+  "refactorStatus": "in-progress",
+  "lastUpdated": "2026-03-09"
+}
