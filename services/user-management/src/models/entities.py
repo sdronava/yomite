@@ -1,4 +1,4 @@
-"""Core data models for user registration service."""
+"""Core data models for user registration service with Cognito."""
 
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
@@ -6,193 +6,84 @@ from datetime import datetime
 
 
 @dataclass
-class UserAccount:
-    """User account record in DynamoDB."""
+class CognitoUserContext:
+    """User context from Cognito JWT token (extracted by API Gateway)."""
     
-    user_id: str  # UUID
+    sub: str  # Cognito user ID (UUID)
     email: str
-    created_at: int  # Unix timestamp
-    updated_at: int  # Unix timestamp
-    data: Dict[str, Any] = field(default_factory=dict)  # Flexible JSON data
-    
-    def to_dynamodb_item(self) -> Dict[str, Any]:
-        """Convert to DynamoDB item format."""
-        return {
-            'PK': f'USER#{self.user_id}',
-            'SK': 'METADATA',
-            'EntityType': 'USER',
-            'UserId': self.user_id,
-            'Email': self.email,
-            'CreatedAt': self.created_at,
-            'UpdatedAt': self.updated_at,
-            'Data': self.data
-        }
+    email_verified: bool
+    name: Optional[str] = None
+    picture: Optional[str] = None
+    identities: Optional[list] = None  # Social provider identities
     
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> 'UserAccount':
-        """Create from DynamoDB item."""
+    def from_authorizer_claims(cls, claims: Dict[str, Any]) -> 'CognitoUserContext':
+        """
+        Create from API Gateway authorizer claims.
+        
+        Args:
+            claims: JWT claims from event['requestContext']['authorizer']['jwt']['claims']
+            
+        Returns:
+            CognitoUserContext instance
+        """
         return cls(
-            user_id=item['UserId'],
-            email=item['Email'],
-            created_at=item['CreatedAt'],
-            updated_at=item['UpdatedAt'],
-            data=item.get('Data', {})
+            sub=claims['sub'],
+            email=claims.get('email', ''),
+            email_verified=claims.get('email_verified', 'false') == 'true',
+            name=claims.get('name'),
+            picture=claims.get('picture'),
+            identities=claims.get('identities')
         )
 
 
 @dataclass
-class SocialIdentity:
-    """Social provider identity linked to user account."""
+class UserProfile:
+    """User profile data stored in DynamoDB."""
     
-    user_id: str
-    provider: str  # google, facebook, github
-    provider_user_id: str
+    user_id: str  # Cognito sub
     email: str
-    linked_at: int  # Unix timestamp
-    data: Dict[str, Any] = field(default_factory=dict)  # Profile data from provider
+    name: Optional[str] = None
+    picture_url: Optional[str] = None
+    preferences: Dict[str, Any] = field(default_factory=dict)
+    created_at: int = 0  # Unix timestamp
+    updated_at: int = 0  # Unix timestamp
     
     def to_dynamodb_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format."""
         return {
             'PK': f'USER#{self.user_id}',
-            'SK': f'SOCIAL#{self.provider}',
-            'EntityType': 'SOCIAL_IDENTITY',
+            'SK': 'PROFILE',
+            'EntityType': 'USER_PROFILE',
             'UserId': self.user_id,
-            'Provider': self.provider,
-            'ProviderUserId': self.provider_user_id,
             'Email': self.email,
-            'EmailProviderKey': f'{self.email}#{self.provider}',
-            'LinkedAt': self.linked_at,
-            'Data': self.data
+            'Name': self.name,
+            'PictureUrl': self.picture_url,
+            'Preferences': self.preferences,
+            'CreatedAt': self.created_at,
+            'UpdatedAt': self.updated_at
         }
     
     @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> 'SocialIdentity':
+    def from_dynamodb_item(cls, item: Dict[str, Any]) -> 'UserProfile':
         """Create from DynamoDB item."""
         return cls(
             user_id=item['UserId'],
-            provider=item['Provider'],
-            provider_user_id=item['ProviderUserId'],
             email=item['Email'],
-            linked_at=item['LinkedAt'],
-            data=item.get('Data', {})
-        )
-
-
-@dataclass
-class Session:
-    """Session record with TTL."""
-    
-    token: str
-    user_id: str
-    created_at: int
-    expires_at: int  # TTL attribute
-    client_ip: str
-    user_agent: str
-    rotation_count: int = 0
-    
-    def to_dynamodb_item(self) -> Dict[str, Any]:
-        """Convert to DynamoDB item format."""
-        import hashlib
-        token_hash = hashlib.sha256(self.token.encode()).hexdigest()
-        
-        return {
-            'PK': f'SESSION#{token_hash}',
-            'SK': 'METADATA',
-            'EntityType': 'SESSION',
-            'UserId': self.user_id,
-            'SessionToken': self.token,
-            'CreatedAt': self.created_at,
-            'ExpiresAt': self.expires_at,
-            'ClientIP': self.client_ip,
-            'UserAgent': self.user_agent,
-            'RotationCount': self.rotation_count
-        }
-    
-    def to_user_session_index_item(self) -> Dict[str, Any]:
-        """Convert to user session index item for listing."""
-        import hashlib
-        token_hash = hashlib.sha256(self.token.encode()).hexdigest()
-        
-        return {
-            'PK': f'USER#{self.user_id}',
-            'SK': f'SESSION#{token_hash}',
-            'EntityType': 'SESSION_INDEX',
-            'SessionToken': self.token,
-            'CreatedAt': self.created_at,
-            'ExpiresAt': self.expires_at
-        }
-    
-    @classmethod
-    def from_dynamodb_item(cls, item: Dict[str, Any]) -> 'Session':
-        """Create from DynamoDB item."""
-        return cls(
-            token=item['SessionToken'],
-            user_id=item['UserId'],
-            created_at=item['CreatedAt'],
-            expires_at=item['ExpiresAt'],
-            client_ip=item['ClientIP'],
-            user_agent=item['UserAgent'],
-            rotation_count=item.get('RotationCount', 0)
+            name=item.get('Name'),
+            picture_url=item.get('PictureUrl'),
+            preferences=item.get('Preferences', {}),
+            created_at=item.get('CreatedAt', 0),
+            updated_at=item.get('UpdatedAt', 0)
         )
 
 
 @dataclass
 class ClientMetadata:
-    """Client information for session binding."""
+    """Client information for logging and analytics."""
     
     ip_address: str
     user_agent: str
-
-
-@dataclass
-class RegistrationResult:
-    """Result of registration operation."""
-    
-    user_id: str
-    email: str
-    linked: bool  # True if account was linked to existing user
-    message: Optional[str] = None
-
-
-@dataclass
-class AuthenticationResult:
-    """Result of authentication operation."""
-    
-    session_token: str
-    user_id: str
-    expires_at: datetime
-
-
-@dataclass
-class SessionValidation:
-    """Result of session validation."""
-    
-    valid: bool
-    user_id: Optional[str] = None
-    expires_at: Optional[datetime] = None
-    requires_reauth: bool = False
-
-
-@dataclass
-class OAuthToken:
-    """OAuth access token from provider."""
-    
-    access_token: str
-    token_type: str
-    expires_in: int
-    refresh_token: Optional[str] = None
-
-
-@dataclass
-class UserProfile:
-    """User profile from social provider."""
-    
-    provider: str
-    provider_user_id: str
-    email: str
-    name: Optional[str] = None
-    picture_url: Optional[str] = None
 
 
 @dataclass

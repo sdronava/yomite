@@ -33,50 +33,139 @@ Globals:
       Variables:
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: !Ref LogLevel
-        DYNAMODB_TABLE_NAME: !Ref UserRegistrationTable
     Tracing: Active
 
 Resources:
-  # DynamoDB Table
-  UserRegistrationTable:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub yomite-users-${Environment}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UserPoolTags:
+        Environment: !Ref Environment
+        Service: user-registration
+
+  # Cognito User Pool Domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub yomite-${Environment}-${AWS::AccountId}
+      UserPoolId: !Ref UserPool
+
+  # Cognito User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub yomite-web-client-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - Google
+        - Facebook
+        - COGNITO
+      CallbackURLs:
+        - !If 
+          - IsProduction
+          - https://app.yomite.com/callback
+          - http://localhost:3000/callback
+      LogoutURLs:
+        - !If
+          - IsProduction
+          - https://app.yomite.com/logout
+          - http://localhost:3000/logout
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      PreventUserExistenceErrors: ENABLED
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+
+  # Google Identity Provider
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Sub '{{resolve:secretsmanager:yomite/oauth/google:SecretString:client_id}}'
+        client_secret: !Sub '{{resolve:secretsmanager:yomite/oauth/google:SecretString:client_secret}}'
+        authorize_scopes: email openid profile
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+        username: sub
+
+  # Facebook Identity Provider
+  FacebookIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Facebook
+      ProviderType: Facebook
+      ProviderDetails:
+        client_id: !Sub '{{resolve:secretsmanager:yomite/oauth/facebook:SecretString:client_id}}'
+        client_secret: !Sub '{{resolve:secretsmanager:yomite/oauth/facebook:SecretString:client_secret}}'
+        authorize_scopes: email public_profile
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+        username: id
+
+  # DynamoDB Table (simplified - no session storage needed)
+  UserDataTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub yomite-user-registration-${Environment}
+      TableName: !Sub yomite-user-data-${Environment}
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: PK
           AttributeType: S
         - AttributeName: SK
           AttributeType: S
-        - AttributeName: Email
-          AttributeType: S
-        - AttributeName: EmailProviderKey
-          AttributeType: S
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
-      GlobalSecondaryIndexes:
-        - IndexName: EmailIndex
-          KeySchema:
-            - AttributeName: Email
-              KeyType: HASH
-            - AttributeName: SK
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: EmailProviderIndex
-          KeySchema:
-            - AttributeName: EmailProviderKey
-              KeyType: HASH
-            - AttributeName: SK
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: ExpiresAt
-        Enabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: !If [IsProduction, true, false]
       Tags:
@@ -86,95 +175,41 @@ Resources:
           Value: user-registration
 
   # Lambda Functions
-  RegistrationHandler:
+  UserProfileHandler:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub user-registration-handler-${Environment}
+      FunctionName: !Sub user-profile-handler-${Environment}
       CodeUri: src/
-      Handler: handlers.registration_handler.lambda_handler
-      Description: Handle user registration with social providers
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UserRegistrationTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:yomite/oauth/*
-      Events:
-        RegisterApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref UserRegistrationApi
-            Path: /auth/register/{provider}
-            Method: POST
-
-  AuthenticationHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub user-authentication-handler-${Environment}
-      CodeUri: src/
-      Handler: handlers.authentication_handler.lambda_handler
-      Description: Handle user authentication with social providers
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UserRegistrationTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:yomite/oauth/*
-      Events:
-        LoginApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref UserRegistrationApi
-            Path: /auth/login/{provider}
-            Method: POST
-
-  SessionHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub user-session-handler-${Environment}
-      CodeUri: src/
-      Handler: handlers.session_handler.lambda_handler
-      Description: Handle user session logout
+      Handler: handlers.profile_handler.lambda_handler
+      Description: Handle user profile operations
       MemorySize: 256
-      Timeout: 5
+      Timeout: 10
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref UserRegistrationTable
+            TableName: !Ref UserDataTable
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref UserDataTable
+          USER_POOL_ID: !Ref UserPool
       Events:
-        LogoutApi:
+        GetProfile:
           Type: HttpApi
           Properties:
             ApiId: !Ref UserRegistrationApi
-            Path: /auth/logout
-            Method: POST
-
-  ValidationHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub user-validation-handler-${Environment}
-      CodeUri: src/
-      Handler: handlers.validation_handler.lambda_handler
-      Description: Validate user session tokens
-      MemorySize: 256
-      Timeout: 3
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref UserRegistrationTable
-      Events:
-        ValidateApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref UserRegistrationApi
-            Path: /auth/validate
+            Path: /profile
             Method: GET
-      ProvisionedConcurrencyConfig:
-        ProvisionedConcurrentExecutions: !If [IsProduction, 2, 0]
+            Auth:
+              Authorizer: CognitoAuthorizer
+        UpdateProfile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UserRegistrationApi
+            Path: /profile
+            Method: PUT
+            Auth:
+              Authorizer: CognitoAuthorizer
 
-  # API Gateway
+  # API Gateway with Cognito Authorizer
   UserRegistrationApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -187,35 +222,28 @@ Resources:
         AllowMethods:
           - GET
           - POST
+          - PUT
+          - DELETE
           - OPTIONS
         MaxAge: 600
       DefaultRouteSettings:
         ThrottlingBurstLimit: 100
         ThrottlingRateLimit: 50
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              Audience:
+                - !Ref UserPoolClient
+              Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+        DefaultAuthorizer: CognitoAuthorizer
 
   # CloudWatch Log Groups
-  RegistrationHandlerLogGroup:
+  UserProfileHandlerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/user-registration-handler-${Environment}
-      RetentionInDays: !If [IsProduction, 30, 7]
-
-  AuthenticationHandlerLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/user-authentication-handler-${Environment}
-      RetentionInDays: !If [IsProduction, 30, 7]
-
-  SessionHandlerLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/user-session-handler-${Environment}
-      RetentionInDays: !If [IsProduction, 30, 7]
-
-  ValidationHandlerLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/user-validation-handler-${Environment}
+      LogGroupName: !Sub /aws/lambda/user-profile-handler-${Environment}
       RetentionInDays: !If [IsProduction, 30, 7]
 
 Conditions:
@@ -228,14 +256,32 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-ApiEndpoint
 
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolId
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolClientId
+
+  UserPoolDomain:
+    Description: Cognito User Pool Domain
+    Value: !Sub ${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolDomain
+
   DynamoDBTableName:
     Description: DynamoDB table name
-    Value: !Ref UserRegistrationTable
+    Value: !Ref UserDataTable
     Export:
       Name: !Sub ${AWS::StackName}-TableName
 
   DynamoDBTableArn:
     Description: DynamoDB table ARN
-    Value: !GetAtt UserRegistrationTable.Arn
+    Value: !GetAtt UserDataTable.Arn
     Export:
       Name: !Sub ${AWS::StackName}-TableArn
