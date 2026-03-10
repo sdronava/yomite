@@ -15,8 +15,8 @@ This plan implements a serverless user registration and authentication service u
   - Create .gitignore for Python and AWS artifacts
   - _Requirements: 9.1, 9.4, 9.5, 10.1_
 
-- [ ] 2. Implement core data models and DynamoDB schema
-  - [ ] 2.1 Create Python data classes for all entities
+- [x] 2. Implement core data models and DynamoDB schema
+  - [x] 2.1 Create Python data classes for all entities
     - Implement UserAccount, SocialIdentity, Session, ClientMetadata dataclasses
     - Implement RegistrationResult, AuthenticationResult, SessionValidation dataclasses
     - Implement OAuthToken, UserProfile, APIResponse, APIError dataclasses
@@ -27,7 +27,7 @@ This plan implements a serverless user registration and authentication service u
     - **Property 7: Account Persistence Round-Trip**
     - **Validates: Requirements 1.5, 11.1**
 
-  - [ ] 2.3 Implement DynamoDB client wrapper
+  - [x] 2.3 Implement DynamoDB client wrapper
     - Create DynamoDBClient class with connection pooling
     - Implement methods for PutItem, GetItem, Query, UpdateItem, DeleteItem
     - Add retry logic with exponential backoff for throttling
