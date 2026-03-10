@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Lint & Format Check Before Push",
+  "description": "Runs flake8 linting, black formatting check, and mypy type checking before allowing changes to be pushed",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "cd services/user-management && flake8 src/ tests/ --max-line-length=120 && black src/ tests/ --line-length=120 --check && mypy src/",
+    "timeout": 60
+  }
+}

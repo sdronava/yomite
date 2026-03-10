@@ -6,8 +6,7 @@ Tests cover CloudWatch metrics, X-Ray tracing decorators, and error handling pat
 
 import sys
 import os
-import time
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
