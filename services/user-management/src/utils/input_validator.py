@@ -1,7 +1,6 @@
 """Input validation and sanitization utilities."""
 
 import re
-from typing import List
 
 
 class ValidationError(Exception):
