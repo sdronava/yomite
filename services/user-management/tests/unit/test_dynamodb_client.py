@@ -200,3 +200,180 @@ class TestDynamoDBClient:
         client.delete_item("USER#123", "PROFILE", retry_count=2)
 
         assert mock_dynamodb.delete_item.call_count == 2
+
+
+class TestDynamoDBClientErrorHandling:
+    """Test error handling and edge cases in DynamoDB client."""
+
+    @pytest.fixture
+    def mock_dynamodb(self):
+        """Create mock DynamoDB resource."""
+        with patch("utils.dynamodb_client.boto3.resource") as mock_resource:
+            mock_table = MagicMock()
+            mock_dynamodb = MagicMock()
+            mock_dynamodb.Table.return_value = mock_table
+            mock_resource.return_value = mock_dynamodb
+            yield mock_table
+
+    def test_put_item_non_throttle_error_raises_immediately(self, mock_dynamodb):
+        """Test put_item raises non-throttle errors immediately without retry."""
+        client = DynamoDBClient(table_name="test-table")
+        item = {"PK": "USER#123", "SK": "PROFILE"}
+
+        # Raise a non-throttle error
+        mock_dynamodb.put_item.side_effect = ClientError(
+            {"Error": {"Code": "ValidationException", "Message": "Invalid item"}},
+            "PutItem",
+        )
+
+        with pytest.raises(ClientError) as exc_info:
+            client.put_item(item, retry_count=3)
+
+        # Should only attempt once (no retries for non-throttle errors)
+        assert mock_dynamodb.put_item.call_count == 1
+        assert exc_info.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_get_item_non_throttle_error_raises_immediately(self, mock_dynamodb):
+        """Test get_item raises non-throttle errors immediately without retry."""
+        client = DynamoDBClient(table_name="test-table")
+
+        # Raise a non-throttle error
+        mock_dynamodb.get_item.side_effect = ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "Table not found"}},
+            "GetItem",
+        )
+
+        with pytest.raises(ClientError) as exc_info:
+            client.get_item({"PK": "USER#123", "SK": "PROFILE"}, retry_count=3)
+
+        # Should only attempt once
+        assert mock_dynamodb.get_item.call_count == 1
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_query_non_throttle_error_raises_immediately(self, mock_dynamodb):
+        """Test query raises non-throttle errors immediately without retry."""
+        client = DynamoDBClient(table_name="test-table")
+
+        # Raise a non-throttle error
+        mock_dynamodb.query.side_effect = ClientError(
+            {"Error": {"Code": "ValidationException", "Message": "Invalid expression"}},
+            "Query",
+        )
+
+        with pytest.raises(ClientError) as exc_info:
+            client.query("PK = :pk", {":pk": "USER#123"}, retry_count=3)
+
+        # Should only attempt once
+        assert mock_dynamodb.query.call_count == 1
+        assert exc_info.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_query_with_retry_on_throttle(self, mock_dynamodb):
+        """Test query retries on throttling."""
+        client = DynamoDBClient(table_name="test-table")
+        expected_items = [{"PK": "USER#123", "SK": "PROFILE"}]
+
+        # First call raises throttle error, second succeeds
+        mock_dynamodb.query.side_effect = [
+            ClientError(
+                {"Error": {"Code": "ProvisionedThroughputExceededException"}},
+                "Query",
+            ),
+            {"Items": expected_items},
+        ]
+
+        result = client.query("PK = :pk", {":pk": "USER#123"}, retry_count=2)
+
+        assert result == expected_items
+        assert mock_dynamodb.query.call_count == 2
+
+    def test_update_item_non_throttle_error_raises_immediately(self, mock_dynamodb):
+        """Test update_item raises non-throttle errors immediately without retry."""
+        client = DynamoDBClient(table_name="test-table")
+
+        # Raise a non-throttle error
+        mock_dynamodb.update_item.side_effect = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}},
+            "UpdateItem",
+        )
+
+        with pytest.raises(ClientError) as exc_info:
+            client.update_item(
+                "USER#123",
+                "PROFILE",
+                "SET #name = :name",
+                {":name": "Jane"},
+                retry_count=3,
+            )
+
+        # Should only attempt once
+        assert mock_dynamodb.update_item.call_count == 1
+        assert exc_info.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
+
+    def test_update_item_with_retry_on_throttle(self, mock_dynamodb):
+        """Test update_item retries on throttling."""
+        client = DynamoDBClient(table_name="test-table")
+        updated_item = {"PK": "USER#123", "SK": "PROFILE", "Name": "Jane"}
+
+        # First call raises throttle error, second succeeds
+        mock_dynamodb.update_item.side_effect = [
+            ClientError(
+                {"Error": {"Code": "ProvisionedThroughputExceededException"}},
+                "UpdateItem",
+            ),
+            {"Attributes": updated_item},
+        ]
+
+        result = client.update_item(
+            "USER#123",
+            "PROFILE",
+            "SET #name = :name",
+            {":name": "Jane"},
+            retry_count=2,
+        )
+
+        assert result == updated_item
+        assert mock_dynamodb.update_item.call_count == 2
+
+    def test_update_item_returns_empty_dict_on_missing_attributes(self, mock_dynamodb):
+        """Test update_item returns empty dict when Attributes missing in response."""
+        client = DynamoDBClient(table_name="test-table")
+
+        # Return response without Attributes
+        mock_dynamodb.update_item.return_value = {}
+
+        result = client.update_item(
+            "USER#123",
+            "PROFILE",
+            "SET #name = :name",
+            {":name": "Jane"},
+        )
+
+        assert result == {}
+
+    def test_delete_item_non_throttle_error_raises_immediately(self, mock_dynamodb):
+        """Test delete_item raises non-throttle errors immediately without retry."""
+        client = DynamoDBClient(table_name="test-table")
+
+        # Raise a non-throttle error
+        mock_dynamodb.delete_item.side_effect = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}},
+            "DeleteItem",
+        )
+
+        with pytest.raises(ClientError) as exc_info:
+            client.delete_item("USER#123", "PROFILE", retry_count=3)
+
+        # Should only attempt once
+        assert mock_dynamodb.delete_item.call_count == 1
+        assert exc_info.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
+
+    def test_query_returns_empty_list_when_items_missing(self, mock_dynamodb):
+        """Test query returns empty list when Items key missing in response."""
+        client = DynamoDBClient(table_name="test-table")
+
+        # Return response without Items key
+        mock_dynamodb.query.return_value = {}
+
+        result = client.query("PK = :pk", {":pk": "USER#123"})
+
+        assert result == []
