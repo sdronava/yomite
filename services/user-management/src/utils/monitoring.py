@@ -18,7 +18,7 @@ SERVICE_NAME = "UserManagement"
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 
-def trace_function(name: Optional[str] = None):
+def trace_function(name: Optional[str] = None):  # type: ignore[misc]
     """
     Decorator to add X-Ray tracing to a function.
 
@@ -32,9 +32,9 @@ def trace_function(name: Optional[str] = None):
             pass
     """
 
-    def decorator(func):
+    def decorator(func):  # type: ignore[no-untyped-def]
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             segment_name = name or func.__name__
 
             try:
@@ -132,7 +132,7 @@ def put_metric(
         print(f"Failed to put metric {metric_name}: {e}")
 
 
-def track_operation(operation_name: str, dimensions: Optional[Dict[str, str]] = None):
+def track_operation(operation_name: str, dimensions: Optional[Dict[str, str]] = None):  # type: ignore[misc]
     """
     Decorator to track operation metrics (count and duration).
 
@@ -147,9 +147,9 @@ def track_operation(operation_name: str, dimensions: Optional[Dict[str, str]] = 
             pass
     """
 
-    def decorator(func):
+    def decorator(func):  # type: ignore[no-untyped-def]
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             start_time = time.time()
 
             try:
@@ -241,14 +241,14 @@ class MetricsCollector:
     def __init__(self, operation_name: str, dimensions: Optional[Dict[str, str]] = None):
         self.operation_name = operation_name
         self.dimensions = dimensions or {}
-        self.start_time = None
-        self.metrics = []
+        self.start_time: Optional[float] = None
+        self.metrics: list[Dict[str, Any]] = []
 
-    def __enter__(self):
+    def __enter__(self) -> "MetricsCollector":
         self.start_time = time.time()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         # Track duration
         duration = time.time() - self.start_time
         self.add_metric(f"{self.operation_name}Duration", duration, "Seconds")
@@ -275,13 +275,13 @@ class MetricsCollector:
 
         self.metrics.append({"name": metric_name, "value": value, "unit": unit, "dimensions": metric_dimensions})
 
-    def _publish_metrics(self):
+    def _publish_metrics(self) -> None:
         """Publish all collected metrics."""
         for metric in self.metrics:
             put_metric(metric["name"], metric["value"], metric["unit"], metric["dimensions"])
 
 
-def track_dynamodb_operation(operation: str, table_name: str):
+def track_dynamodb_operation(operation: str, table_name: str):  # type: ignore[misc]
     """
     Decorator to track DynamoDB operation metrics.
 
@@ -296,9 +296,9 @@ def track_dynamodb_operation(operation: str, table_name: str):
             pass
     """
 
-    def decorator(func):
+    def decorator(func):  # type: ignore[no-untyped-def]
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             dimensions = {"Operation": operation, "TableName": table_name}
 
             start_time = time.time()
@@ -330,7 +330,7 @@ def track_dynamodb_operation(operation: str, table_name: str):
     return decorator
 
 
-def track_cognito_authorization():
+def track_cognito_authorization() -> None:
     """
     Track Cognito authorization metrics.
 
@@ -339,7 +339,7 @@ def track_cognito_authorization():
     put_metric("CognitoAuthorizationSuccess", 1, "Count")
 
 
-def track_cognito_authorization_failure(reason: str = "Unknown"):
+def track_cognito_authorization_failure(reason: str = "Unknown") -> None:
     """
     Track Cognito authorization failure metrics.
 
