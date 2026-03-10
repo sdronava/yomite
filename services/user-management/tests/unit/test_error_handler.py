@@ -2,8 +2,6 @@
 
 import sys
 import os
-import pytest
-from unittest.mock import Mock, patch
 from botocore.exceptions import ClientError
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -100,8 +98,6 @@ class TestErrorHandler:
 
     def test_create_api_error_response_with_details(self):
         """Test create_api_error_response with details."""
-        error = APIError(
-            code=ErrorCodes.VALIDATION_ERROR, message="Invalid input", details={"field": "name"}
-        )
+        error = APIError(code=ErrorCodes.VALIDATION_ERROR, message="Invalid input", details={"field": "name"})
         response = create_api_error_response(error, "req-123")
         assert response["error"]["details"] == {"field": "name"}

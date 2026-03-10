@@ -2,7 +2,6 @@
 
 import sys
 import os
-import json
 import logging
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

@@ -3,7 +3,7 @@
 import sys
 import os
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from botocore.exceptions import ClientError
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -182,9 +182,7 @@ class TestDynamoDBClient:
 
         client.delete_item("USER#123", "PROFILE")
 
-        mock_dynamodb.delete_item.assert_called_once_with(
-            Key={"PK": "USER#123", "SK": "PROFILE"}
-        )
+        mock_dynamodb.delete_item.assert_called_once_with(Key={"PK": "USER#123", "SK": "PROFILE"})
 
     def test_delete_item_with_retry_on_throttle(self, mock_dynamodb):
         """Test delete_item retries on throttling."""
