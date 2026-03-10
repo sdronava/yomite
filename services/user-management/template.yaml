@@ -1,0 +1,241 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: User Registration Service - Serverless Architecture
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+    Description: Lambda function log level
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Architectures:
+      - arm64
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: !Ref LogLevel
+        DYNAMODB_TABLE_NAME: !Ref UserRegistrationTable
+    Tracing: Active
+
+Resources:
+  # DynamoDB Table
+  UserRegistrationTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub yomite-user-registration-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: Email
+          AttributeType: S
+        - AttributeName: EmailProviderKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: Email
+              KeyType: HASH
+            - AttributeName: SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: EmailProviderIndex
+          KeySchema:
+            - AttributeName: EmailProviderKey
+              KeyType: HASH
+            - AttributeName: SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAt
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [IsProduction, true, false]
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: user-registration
+
+  # Lambda Functions
+  RegistrationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub user-registration-handler-${Environment}
+      CodeUri: src/
+      Handler: handlers.registration_handler.lambda_handler
+      Description: Handle user registration with social providers
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserRegistrationTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:yomite/oauth/*
+      Events:
+        RegisterApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UserRegistrationApi
+            Path: /auth/register/{provider}
+            Method: POST
+
+  AuthenticationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub user-authentication-handler-${Environment}
+      CodeUri: src/
+      Handler: handlers.authentication_handler.lambda_handler
+      Description: Handle user authentication with social providers
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserRegistrationTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:yomite/oauth/*
+      Events:
+        LoginApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UserRegistrationApi
+            Path: /auth/login/{provider}
+            Method: POST
+
+  SessionHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub user-session-handler-${Environment}
+      CodeUri: src/
+      Handler: handlers.session_handler.lambda_handler
+      Description: Handle user session logout
+      MemorySize: 256
+      Timeout: 5
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserRegistrationTable
+      Events:
+        LogoutApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UserRegistrationApi
+            Path: /auth/logout
+            Method: POST
+
+  ValidationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub user-validation-handler-${Environment}
+      CodeUri: src/
+      Handler: handlers.validation_handler.lambda_handler
+      Description: Validate user session tokens
+      MemorySize: 256
+      Timeout: 3
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserRegistrationTable
+      Events:
+        ValidateApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UserRegistrationApi
+            Path: /auth/validate
+            Method: GET
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: !If [IsProduction, 2, 0]
+
+  # API Gateway
+  UserRegistrationApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
+
+  # CloudWatch Log Groups
+  RegistrationHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/user-registration-handler-${Environment}
+      RetentionInDays: !If [IsProduction, 30, 7]
+
+  AuthenticationHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/user-authentication-handler-${Environment}
+      RetentionInDays: !If [IsProduction, 30, 7]
+
+  SessionHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/user-session-handler-${Environment}
+      RetentionInDays: !If [IsProduction, 30, 7]
+
+  ValidationHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/user-validation-handler-${Environment}
+      RetentionInDays: !If [IsProduction, 30, 7]
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, prod]
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${UserRegistrationApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiEndpoint
+
+  DynamoDBTableName:
+    Description: DynamoDB table name
+    Value: !Ref UserRegistrationTable
+    Export:
+      Name: !Sub ${AWS::StackName}-TableName
+
+  DynamoDBTableArn:
+    Description: DynamoDB table ARN
+    Value: !GetAtt UserRegistrationTable.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-TableArn
