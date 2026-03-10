@@ -633,6 +633,105 @@ Use Hypothesis for property-based testing of all 26 correctness properties.
 
 ---
 
+## Decision 11: Monorepo with Service Isolation
+
+**Date:** 2026-03-09
+
+**Status:** Accepted
+
+**Context:**
+- Multiple sub-projects planned (User Management, future reading features)
+- Want flexibility to separate services into independent repos later
+- Need to maintain modularity and clear boundaries
+- Single repo simplifies initial development and coordination
+
+**Decision:**
+Implement services in isolated subdirectories within a monorepo structure, with each service self-contained and ready for future extraction.
+
+**Project Structure:**
+```
+yomite/                          # Monorepo root
+├── services/
+│   ├── user-management/         # User Registration Service
+│   │   ├── src/                # Lambda functions, services, models
+│   │   ├── tests/              # Unit and property-based tests
+│   │   ├── infrastructure/     # SAM template, scripts
+│   │   ├── template.yaml       # AWS SAM template
+│   │   ├── requirements.txt    # Python dependencies
+│   │   ├── README.md           # Service documentation
+│   │   └── .gitignore          # Service-specific ignores
+│   └── [future-services]/      # Other services
+├── frontend/                    # Frontend application
+├── .kiro/
+│   ├── specs/                  # Feature specifications
+│   └── steering/               # AI guidance documents
+└── README.md                    # Project overview
+```
+
+**Rationale:**
+1. **Service Isolation:**
+   - Each service has its own src/, tests/, infrastructure/
+   - Independent dependencies (requirements.txt per service)
+   - Self-contained deployment (template.yaml per service)
+   - Clear boundaries enable future extraction
+
+2. **Monorepo Benefits (Current):**
+   - Simplified coordination during initial development
+   - Shared tooling and CI/CD configuration
+   - Easier cross-service refactoring
+   - Single git history for project evolution
+
+3. **Future Flexibility:**
+   - Each service can be extracted to its own repo
+   - Minimal changes needed (move folder, update paths)
+   - Independent versioning and deployment
+   - Can use git subtree or git filter-branch for extraction
+
+4. **Alignment with Architecture:**
+   - Matches modular architecture from steering documents
+   - Supports eventual microservices separation
+   - Maintains cloud-agnostic design principles
+
+**Consequences:**
+
+*Positive:*
+- Clear service boundaries from day one
+- Easy to extract services later
+- Simplified initial development
+- Shared infrastructure and tooling
+
+*Negative:*
+- Slightly more complex directory structure
+- Need to manage per-service dependencies
+- CI/CD must handle multiple services
+
+*Mitigations:*
+- Document service structure in README
+- Use consistent patterns across services
+- Automate multi-service CI/CD with GitHub Actions
+- Keep shared utilities minimal (avoid tight coupling)
+
+**Service Extraction Process (Future):**
+When ready to extract a service:
+1. Create new repository
+2. Use `git subtree split` or `git filter-branch` to extract service history
+3. Update import paths and dependencies
+4. Set up independent CI/CD
+5. Update documentation and references
+
+**Alternatives Considered:**
+1. **Flat Structure:** All code in root - harder to separate later
+2. **Separate Repos from Start:** Premature, adds coordination overhead
+3. **Nested Git Submodules:** Complex, harder to work with initially
+
+**Review Trigger:**
+- When team grows beyond 5 developers
+- When services have independent release cycles
+- When cross-service changes become rare
+- When operational complexity justifies separation
+
+---
+
 ## Future Decisions to Make
 
 ### 1. Multi-Factor Authentication (MFA)
