@@ -106,6 +106,14 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+      AWS_SECURITY_TOKEN: testing
+      AWS_SESSION_TOKEN: testing
+      DYNAMODB_TABLE_NAME: yomite-user-data-test
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -152,6 +160,15 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+      AWS_SECURITY_TOKEN: testing
+      AWS_SESSION_TOKEN: testing
+      DYNAMODB_TABLE_NAME: yomite-user-data-local
+      DYNAMODB_ENDPOINT_URL: http://localhost:8000
+    
     services:
       dynamodb-local:
         image: amazon/dynamodb-local:latest
@@ -182,18 +199,10 @@ jobs:
       - name: Set up DynamoDB Local
         run: |
           python infrastructure/scripts/setup-local-dynamodb.py
-        env:
-          AWS_ACCESS_KEY_ID: dummy
-          AWS_SECRET_ACCESS_KEY: dummy
-          AWS_DEFAULT_REGION: us-east-1
       
       - name: Run integration tests
         run: |
           pytest tests/integration/ -v || echo "No integration tests yet"
-        env:
-          DYNAMODB_ENDPOINT_URL: http://localhost:8000
-          DYNAMODB_TABLE_NAME: yomite-user-data-local
-          AWS_REGION: us-east-1
 
   build-sam:
     name: Build SAM Application
