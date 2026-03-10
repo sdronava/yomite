@@ -909,3 +909,76 @@ This document should be reviewed:
 - [design.md](./design.md) - Technical design document
 - [requirements.md](./requirements.md) - Functional requirements
 - [archive-fargate-design/](./archive-fargate-design/) - Original Fargate design
+
+
+---
+
+## Decision 13: Local Test Validation Before Push
+
+**Date:** March 10, 2026
+
+**Status:** Implemented
+
+**Context:**
+- Need to maintain code quality and prevent broken tests from being pushed to the repository
+- CI/CD pipeline failures waste resources and slow down development
+- Early detection of issues improves developer experience and code review efficiency
+
+**Decision:**
+All tests must pass locally before pushing changes to the PR branch on remote.
+
+**Rationale:**
+1. **Quality Assurance:**
+   - Catches issues early before they reach the remote repository
+   - Prevents CI/CD pipeline failures and wasted resources
+   - Ensures code quality standards are met before peer review
+
+2. **Developer Experience:**
+   - Reduces feedback cycles and speeds up the review process
+   - Developers get immediate feedback on their changes
+   - Prevents embarrassing broken commits
+
+3. **Cost Efficiency:**
+   - Reduces unnecessary CI/CD runs
+   - Saves compute resources and time
+   - Faster iteration cycles
+
+**Implementation:**
+- Created a "Run Tests Before PR" hook that can be manually triggered
+- Hook runs full test suite with coverage reporting: `pytest --cov=src --cov-report=term-missing -v`
+- Developers should run this hook before pushing changes to verify all tests pass
+- Hook is located in `.kiro/hooks/pre-pr-test-check.json`
+
+**Usage:**
+1. Make code changes
+2. Trigger "Run Tests Before PR" hook from Agent Hooks panel or command palette
+3. Verify all tests pass and coverage is acceptable
+4. Push changes to PR branch on remote
+
+**Consequences:**
+
+*Positive:*
+- Higher code quality before peer review
+- Faster feedback cycles
+- Reduced CI/CD failures
+- Better developer experience
+
+*Negative:*
+- Requires developer discipline to run hook
+- Adds extra step before pushing
+- May slow down rapid iteration
+
+*Mitigations:*
+- Hook is easy to trigger (one click)
+- Can be automated in future with pre-push git hooks
+- Documentation in README reminds developers
+
+**Alternatives Considered:**
+1. **Mandatory Pre-Push Git Hook:** More enforcement but less flexibility
+2. **CI/CD Only:** Slower feedback, wasted resources
+3. **No Local Testing:** Poor code quality, frequent CI failures
+
+**Review Trigger:**
+- If developers frequently push broken tests
+- If CI/CD failure rate exceeds 10%
+- If need to enforce with mandatory git hooks
