@@ -108,10 +108,76 @@ pytest tests/unit/ -v
 
 ### 5. Local Testing with Cognito
 
-For local development, you can:
-- Use Cognito Local (community tool)
-- Mock Cognito responses in tests
-- Deploy to dev environment for integration testing
+For local development, you have several options:
+
+**Option 1: Use Real Cognito User Pool (Recommended)**
+- Deploy to dev environment
+- Use real Cognito User Pool for local testing
+- Frontend can use Cognito SDK to authenticate
+- Copy JWT tokens from browser for API testing
+
+**Option 2: Mock Cognito JWT Tokens**
+- Create mock JWT tokens for local testing
+- Use tools like [jwt.io](https://jwt.io) to generate test tokens
+- Include required claims: `sub`, `email`, `email_verified`
+
+**Example Mock JWT Claims:**
+```json
+{
+  "sub": "test-user-123",
+  "email": "test@example.com",
+  "email_verified": "true",
+  "name": "Test User",
+  "cognito:username": "test-user-123",
+  "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX",
+  "aud": "your-client-id",
+  "exp": 1234567890
+}
+```
+
+**Option 3: Use Cognito Local (Community Tool)**
+- [cognito-local](https://github.com/jagregory/cognito-local) - Local Cognito emulator
+- Requires additional setup and configuration
+- Not officially supported by AWS
+
+**Testing Profile Handler Locally:**
+```bash
+# Start DynamoDB Local
+docker-compose up -d
+
+# Create local table
+python infrastructure/scripts/setup-local-dynamodb.py
+
+# Invoke Lambda locally with SAM
+sam local invoke UserProfileHandler \
+  --event events/get-profile.json \
+  --env-vars env.json
+
+# Start local API
+sam local start-api --port 8080
+```
+
+**Example Event (events/get-profile.json):**
+```json
+{
+  "requestContext": {
+    "http": {
+      "method": "GET"
+    },
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "sub": "test-user-123",
+          "email": "test@example.com",
+          "email_verified": "true",
+          "name": "Test User"
+        }
+      }
+    },
+    "requestId": "test-request-id"
+  }
+}
+```
 
 ## API Endpoints
 
@@ -130,41 +196,210 @@ Authorization: Bearer {access_token}
 
 ## Deployment
 
-### Deploy to Development
+### Prerequisites
+
+- Python 3.11+
+- AWS CLI configured with appropriate credentials
+- AWS SAM CLI installed (`pip install aws-sam-cli`)
+- AWS Account with permissions for:
+  - Cognito User Pools
+  - Lambda
+  - DynamoDB
+  - API Gateway
+  - CloudWatch Logs
+  - IAM roles
+
+### Step 1: Configure OAuth Providers
+
+Before deploying, you need to create OAuth applications with Google and Facebook:
+
+**Google OAuth Setup:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create a new OAuth 2.0 Client ID
+3. Set authorized redirect URIs:
+   - Dev: `https://yomite-dev-{account-id}.auth.{region}.amazoncognito.com/oauth2/idpresponse`
+   - Prod: `https://yomite-prod-{account-id}.auth.{region}.amazoncognito.com/oauth2/idpresponse`
+4. Note the Client ID and Client Secret
+
+**Facebook OAuth Setup:**
+1. Go to [Facebook Developers](https://developers.facebook.com/apps)
+2. Create a new app and add Facebook Login product
+3. Set Valid OAuth Redirect URIs (same pattern as Google)
+4. Note the App ID and App Secret
+
+### Step 2: Store OAuth Credentials in AWS Secrets Manager
 
 ```bash
-sam build
-sam deploy --config-env dev
+# Google OAuth credentials
+aws secretsmanager create-secret \
+  --name yomite/oauth/google \
+  --secret-string '{"client_id":"YOUR_GOOGLE_CLIENT_ID","client_secret":"YOUR_GOOGLE_CLIENT_SECRET"}' \
+  --region us-east-1
+
+# Facebook OAuth credentials
+aws secretsmanager create-secret \
+  --name yomite/oauth/facebook \
+  --secret-string '{"client_id":"YOUR_FACEBOOK_APP_ID","client_secret":"YOUR_FACEBOOK_APP_SECRET"}' \
+  --region us-east-1
 ```
 
-### Deploy to Staging
+### Step 3: Build and Deploy
 
+**Deploy to Development:**
+```bash
+cd services/user-management
+
+# Build Lambda function
+sam build
+
+# Deploy to dev environment
+sam deploy --config-env dev --guided
+
+# Follow prompts:
+# - Stack Name: yomite-user-management-dev
+# - AWS Region: us-east-1
+# - Parameter Environment: dev
+# - Confirm changes before deploy: Y
+# - Allow SAM CLI IAM role creation: Y
+# - Save arguments to configuration file: Y
+```
+
+**Deploy to Staging:**
 ```bash
 sam build
 sam deploy --config-env staging
 ```
 
-### Deploy to Production
-
+**Deploy to Production:**
 ```bash
 sam build
 sam deploy --config-env prod
 ```
 
+### Step 4: Verify Deployment
+
+After deployment, SAM will output:
+- `ApiEndpoint` - API Gateway URL
+- `UserPoolId` - Cognito User Pool ID
+- `UserPoolClientId` - Cognito User Pool Client ID
+- `UserPoolDomain` - Cognito Hosted UI domain
+
+Test the deployment:
+```bash
+# Get Cognito Hosted UI URL
+COGNITO_DOMAIN=$(aws cloudformation describe-stacks \
+  --stack-name yomite-user-management-dev \
+  --query 'Stacks[0].Outputs[?OutputKey==`UserPoolDomain`].OutputValue' \
+  --output text)
+
+echo "Cognito Hosted UI: https://${COGNITO_DOMAIN}/login"
+
+# Test profile endpoint (requires JWT token)
+API_ENDPOINT=$(aws cloudformation describe-stacks \
+  --stack-name yomite-user-management-dev \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
+  --output text)
+
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  ${API_ENDPOINT}/profile
+```
+
+### Troubleshooting Deployment
+
+**Issue: Cognito Identity Provider creation fails**
+- Verify OAuth secrets exist in Secrets Manager
+- Check secret names match exactly: `yomite/oauth/google`, `yomite/oauth/facebook`
+- Verify secret format is correct JSON with `client_id` and `client_secret` keys
+
+**Issue: API Gateway returns 401 Unauthorized**
+- Verify JWT token is valid and not expired
+- Check Cognito User Pool Client ID matches the audience in JWT
+- Verify API Gateway Cognito Authorizer is configured correctly
+
+**Issue: Lambda function errors**
+- Check CloudWatch Logs: `/aws/lambda/user-profile-handler-{env}`
+- Verify DynamoDB table exists and Lambda has permissions
+- Check environment variables are set correctly
+
 ## Testing
 
+### Unit Tests
+
 ```bash
-# Unit tests
-pytest tests/unit/
+# Run unit tests
+pytest tests/unit/ -v
 
-# Integration tests
-pytest tests/integration/
+# Run with coverage
+pytest tests/unit/ --cov=src --cov-report=html
 
-# Property-based tests
-pytest tests/property/
+# View coverage report
+open htmlcov/index.html
+```
 
-# All tests with coverage
-pytest --cov=src --cov-report=term-missing
+### Integration Tests
+
+```bash
+# Run integration tests (requires DynamoDB Local)
+docker-compose up -d
+python infrastructure/scripts/setup-local-dynamodb.py
+pytest tests/integration/ -v
+```
+
+### Testing with Mock Cognito
+
+```python
+# Example: Mock Cognito JWT claims in tests
+def test_get_profile_with_mock_cognito():
+    event = {
+        'requestContext': {
+            'http': {'method': 'GET'},
+            'authorizer': {
+                'jwt': {
+                    'claims': {
+                        'sub': 'test-user-123',
+                        'email': 'test@example.com',
+                        'email_verified': 'true',
+                        'name': 'Test User'
+                    }
+                }
+            },
+            'requestId': 'test-request-id'
+        }
+    }
+    
+    response = lambda_handler(event, MockContext())
+    
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['success'] is True
+    assert body['data']['email'] == 'test@example.com'
+```
+
+### End-to-End Testing
+
+```bash
+# Deploy to dev environment
+sam build && sam deploy --config-env dev
+
+# Get API endpoint
+API_ENDPOINT=$(aws cloudformation describe-stacks \
+  --stack-name yomite-user-management-dev \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
+  --output text)
+
+# Authenticate via Cognito Hosted UI (manual step)
+# Copy JWT token from browser
+
+# Test profile endpoint
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  ${API_ENDPOINT}/profile
+
+# Test profile update
+curl -X PUT \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Updated Name","preferences":{"theme":"dark"}}' \
+  ${API_ENDPOINT}/profile
 ```
 
 ## Monitoring
