@@ -267,8 +267,13 @@ class MetricsCollector:
         # Don't suppress exceptions
         return False
 
-    def add_metric(self, metric_name: str, value: float, unit: str = "None", 
-                  dimensions: Optional[Dict[str, str]] = None):
+    def add_metric(
+        self,
+        metric_name: str,
+        value: float,
+        unit: str = "None",
+        dimensions: Optional[Dict[str, str]] = None,
+    ):
         """Add a metric to be published when the context exits."""
         metric_dimensions = self.dimensions.copy()
         if dimensions:

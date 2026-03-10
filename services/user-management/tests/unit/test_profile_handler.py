@@ -1,17 +1,18 @@
 """Unit tests for profile handler Lambda function."""
 
 import json
-import sys
 import os
+import sys
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from handlers.profile_handler import lambda_handler, handle_get_profile, handle_update_profile, get_dynamodb_client
-from models.entities import CognitoUserContext, UserProfile
-from models.error_codes import ErrorCodes
+from handlers.profile_handler import lambda_handler  # noqa: E402
+from models.entities import CognitoUserContext, UserProfile  # noqa: E402
+from models.error_codes import ErrorCodes  # noqa: E402
 
 
 @pytest.fixture
