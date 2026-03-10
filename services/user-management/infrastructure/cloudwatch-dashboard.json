@@ -1,0 +1,227 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/Lambda", "Invocations", { "stat": "Sum", "label": "Total Invocations" }],
+          [".", "Errors", { "stat": "Sum", "label": "Errors", "color": "#d62728" }],
+          [".", "Throttles", { "stat": "Sum", "label": "Throttles", "color": "#ff7f0e" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Lambda Invocations & Errors",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/Lambda", "Duration", { "stat": "Average", "label": "Avg Duration" }],
+          ["...", { "stat": "Maximum", "label": "Max Duration", "color": "#d62728" }],
+          ["...", { "stat": "p99", "label": "P99 Duration", "color": "#ff7f0e" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Lambda Duration (ms)",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/Lambda", "ConcurrentExecutions", { "stat": "Maximum", "label": "Concurrent Executions" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Lambda Concurrent Executions",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/DynamoDB", "ConsumedReadCapacityUnits", { "stat": "Sum", "label": "Read Capacity" }],
+          [".", "ConsumedWriteCapacityUnits", { "stat": "Sum", "label": "Write Capacity" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "DynamoDB Consumed Capacity",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/DynamoDB", "SuccessfulRequestLatency", { "stat": "Average", "label": "Avg Latency" }],
+          ["...", { "stat": "p99", "label": "P99 Latency", "color": "#ff7f0e" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "DynamoDB Latency (ms)",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/ApiGateway", "Count", { "stat": "Sum", "label": "Total Requests" }],
+          [".", "4XXError", { "stat": "Sum", "label": "4XX Errors", "color": "#ff7f0e" }],
+          [".", "5XXError", { "stat": "Sum", "label": "5XX Errors", "color": "#d62728" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "API Gateway Requests & Errors",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/ApiGateway", "Latency", { "stat": "Average", "label": "Avg Latency" }],
+          ["...", { "stat": "p99", "label": "P99 Latency", "color": "#ff7f0e" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "API Gateway Latency (ms)",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["AWS/Cognito", "UserAuthentication", { "stat": "Sum", "label": "Authentications" }],
+          [".", "TokenRefresh", { "stat": "Sum", "label": "Token Refreshes" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Cognito User Pool Activity",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["UserManagement/dev", "GetProfileSuccess", { "stat": "Sum", "label": "Get Profile Success" }],
+          [".", "GetProfileError", { "stat": "Sum", "label": "Get Profile Error", "color": "#d62728" }],
+          [".", "UpdateProfileSuccess", { "stat": "Sum", "label": "Update Profile Success" }],
+          [".", "UpdateProfileError", { "stat": "Sum", "label": "Update Profile Error", "color": "#d62728" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Custom Metrics - Profile Operations",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["UserManagement/dev", "GetProfileDuration", { "stat": "Average", "label": "Get Profile Avg" }],
+          [".", "UpdateProfileDuration", { "stat": "Average", "label": "Update Profile Avg" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Custom Metrics - Operation Duration (s)",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "properties": {
+        "metrics": [
+          ["UserManagement/dev", "DynamoDBOperationSuccess", { "stat": "Sum", "label": "DynamoDB Success" }],
+          [".", "DynamoDBOperationError", { "stat": "Sum", "label": "DynamoDB Error", "color": "#d62728" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Custom Metrics - DynamoDB Operations",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "log",
+      "properties": {
+        "query": "SOURCE '/aws/lambda/user-profile-handler-dev'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 20",
+        "region": "us-east-1",
+        "stacked": false,
+        "title": "Recent Errors (Last 20)",
+        "view": "table"
+      }
+    }
+  ]
+}

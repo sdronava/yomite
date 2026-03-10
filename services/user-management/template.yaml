@@ -33,7 +33,6 @@ Globals:
       Variables:
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: !Ref LogLevel
-    Tracing: Active
 
 Resources:
   # Cognito User Pool

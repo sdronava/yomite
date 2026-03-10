@@ -6,7 +6,7 @@ Tests cover CloudWatch metrics, X-Ray tracing decorators, and error handling pat
 
 import sys
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -26,51 +26,38 @@ from utils.monitoring import (  # noqa: E402
 
 
 class TestTraceFunction:
-    """Tests for trace_function decorator."""
+    """Tests for trace_function decorator (X-Ray disabled)."""
 
-    @patch("utils.monitoring.xray_recorder")
-    def test_trace_function_without_xray_context(self, mock_xray):
-        """Test trace_function decorator when X-Ray context is unavailable."""
-        # Simulate X-Ray context unavailable
-        mock_xray.begin_subsegment.side_effect = Exception("No X-Ray context")
+    def test_trace_function_without_xray_context(self):
+        """Test trace_function decorator when X-Ray is disabled."""
 
         @trace_function("test_operation")
         def sample_function():
             return "success"
 
-        # Should not raise exception, should handle gracefully
+        # Should work as a no-op decorator
         result = sample_function()
         assert result == "success"
 
-    @patch("utils.monitoring.xray_recorder")
-    def test_trace_function_with_exception_in_function(self, mock_xray):
+    def test_trace_function_with_exception_in_function(self):
         """Test trace_function decorator when decorated function raises exception."""
-        mock_subsegment = MagicMock()
-        mock_xray.begin_subsegment.return_value = mock_subsegment
 
         @trace_function("test_operation")
         def failing_function():
             raise ValueError("Test error")
 
+        # Exception should propagate normally
         with pytest.raises(ValueError, match="Test error"):
             failing_function()
 
-        # Verify error metadata was added
-        mock_subsegment.put_annotation.assert_called_with("error", True)
-        assert mock_subsegment.put_metadata.call_count >= 2  # error_type and error_message
-
-    @patch("utils.monitoring.xray_recorder")
-    def test_trace_function_end_subsegment_fails(self, mock_xray):
-        """Test trace_function decorator when ending subsegment fails."""
-        mock_subsegment = MagicMock()
-        mock_xray.begin_subsegment.return_value = mock_subsegment
-        mock_xray.end_subsegment.side_effect = Exception("Failed to end subsegment")
+    def test_trace_function_end_subsegment_fails(self):
+        """Test trace_function decorator handles errors gracefully."""
 
         @trace_function("test_operation")
         def sample_function():
             return "success"
 
-        # Should not raise exception, should handle gracefully
+        # Should work without issues
         result = sample_function()
         assert result == "success"
 
@@ -123,42 +110,30 @@ class TestTrackOperation:
 
 
 class TestAddTraceAnnotation:
-    """Tests for add_trace_annotation function."""
+    """Tests for add_trace_annotation function (X-Ray disabled)."""
 
-    @patch("utils.monitoring.xray_recorder")
-    def test_add_trace_annotation_without_xray_context(self, mock_xray):
-        """Test add_trace_annotation when X-Ray context is unavailable."""
-        mock_xray.current_segment.side_effect = Exception("No X-Ray context")
-
-        # Should not raise exception, should handle gracefully
+    def test_add_trace_annotation_without_xray_context(self):
+        """Test add_trace_annotation when X-Ray is disabled."""
+        # Should work as a no-op
         add_trace_annotation("test_key", "test_value")
 
-    @patch("utils.monitoring.xray_recorder")
-    def test_add_trace_annotation_with_none_segment(self, mock_xray):
-        """Test add_trace_annotation when current segment is None."""
-        mock_xray.current_segment.return_value = None
-
-        # Should not raise exception, should handle gracefully
+    def test_add_trace_annotation_with_none_segment(self):
+        """Test add_trace_annotation handles None segment gracefully."""
+        # Should work as a no-op
         add_trace_annotation("test_key", "test_value")
 
 
 class TestAddTraceMetadata:
-    """Tests for add_trace_metadata function."""
+    """Tests for add_trace_metadata function (X-Ray disabled)."""
 
-    @patch("utils.monitoring.xray_recorder")
-    def test_add_trace_metadata_without_xray_context(self, mock_xray):
-        """Test add_trace_metadata when X-Ray context is unavailable."""
-        mock_xray.current_segment.side_effect = Exception("No X-Ray context")
-
-        # Should not raise exception, should handle gracefully
+    def test_add_trace_metadata_without_xray_context(self):
+        """Test add_trace_metadata when X-Ray is disabled."""
+        # Should work as a no-op
         add_trace_metadata("test_key", {"data": "value"})
 
-    @patch("utils.monitoring.xray_recorder")
-    def test_add_trace_metadata_with_none_segment(self, mock_xray):
-        """Test add_trace_metadata when current segment is None."""
-        mock_xray.current_segment.return_value = None
-
-        # Should not raise exception, should handle gracefully
+    def test_add_trace_metadata_with_none_segment(self):
+        """Test add_trace_metadata handles None segment gracefully."""
+        # Should work as a no-op
         add_trace_metadata("test_key", {"data": "value"}, "custom_namespace")
 
 

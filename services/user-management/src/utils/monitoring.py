@@ -1,4 +1,4 @@
-"""Monitoring utilities for CloudWatch metrics and X-Ray tracing."""
+"""Monitoring utilities for CloudWatch metrics."""
 
 # mypy: ignore-errors
 
@@ -7,10 +7,6 @@ import time
 from typing import Any, Dict, Optional, Literal
 from functools import wraps
 import boto3
-from aws_xray_sdk.core import xray_recorder, patch_all
-
-# Patch AWS SDK and other libraries for X-Ray tracing
-patch_all()
 
 # Initialize CloudWatch client
 cloudwatch = boto3.client("cloudwatch")
@@ -22,10 +18,10 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 def trace_function(name: Optional[str] = None):  # type: ignore[misc]
     """
-    Decorator to add X-Ray tracing to a function.
+    Decorator placeholder for function tracing (X-Ray disabled).
 
     Args:
-        name: Optional custom name for the subsegment
+        name: Optional custom name for the trace
 
     Example:
         @trace_function("get_user_profile")
@@ -37,47 +33,8 @@ def trace_function(name: Optional[str] = None):  # type: ignore[misc]
     def decorator(func):  # type: ignore[no-untyped-def]
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            segment_name = name or func.__name__
-
-            try:
-                # Try to create subsegment for tracing
-                subsegment = xray_recorder.begin_subsegment(segment_name)
-                has_subsegment = subsegment is not None
-            except Exception:
-                # No X-Ray context (e.g., during testing)
-                has_subsegment = False
-                subsegment = None
-
-            try:
-                if has_subsegment and subsegment:
-                    # Add metadata
-                    subsegment.put_metadata("function", func.__name__)
-                    subsegment.put_metadata("module", func.__module__)
-
-                # Execute function
-                result = func(*args, **kwargs)
-
-                if has_subsegment and subsegment:
-                    # Add result metadata (if not too large)
-                    if result and isinstance(result, dict) and len(str(result)) < 1000:
-                        subsegment.put_metadata("result_keys", list(result.keys()))
-
-                return result
-
-            except Exception as e:
-                if has_subsegment and subsegment:
-                    # Add error information
-                    subsegment.put_annotation("error", True)
-                    subsegment.put_metadata("error_type", type(e).__name__)
-                    subsegment.put_metadata("error_message", str(e))
-                raise
-
-            finally:
-                if has_subsegment:
-                    try:
-                        xray_recorder.end_subsegment()
-                    except Exception:
-                        pass
+            # Simply execute function without tracing
+            return func(*args, **kwargs)
 
         return wrapper
 
@@ -184,9 +141,7 @@ def track_operation(operation_name: str, dimensions: Optional[Dict[str, str]] = 
 
 def add_trace_annotation(key: str, value: Any):
     """
-    Add an annotation to the current X-Ray segment.
-
-    Annotations are indexed and can be used for filtering traces.
+    Placeholder for trace annotation (X-Ray disabled).
 
     Args:
         key: Annotation key
@@ -196,20 +151,13 @@ def add_trace_annotation(key: str, value: Any):
         add_trace_annotation("user_id", "user-123")
         add_trace_annotation("cache_hit", True)
     """
-    try:
-        segment = xray_recorder.current_segment()
-        if segment:
-            segment.put_annotation(key, value)
-    except Exception:
-        # Ignore if not in X-Ray context (e.g., during testing)
-        pass
+    # No-op when X-Ray is disabled
+    pass
 
 
 def add_trace_metadata(key: str, value: Any, namespace: str = "default"):
     """
-    Add metadata to the current X-Ray segment.
-
-    Metadata is not indexed but can contain more detailed information.
+    Placeholder for trace metadata (X-Ray disabled).
 
     Args:
         key: Metadata key
@@ -220,13 +168,8 @@ def add_trace_metadata(key: str, value: Any, namespace: str = "default"):
         add_trace_metadata("request_body", {"name": "John"})
         add_trace_metadata("db_query", "SELECT * FROM users", "database")
     """
-    try:
-        segment = xray_recorder.current_segment()
-        if segment:
-            segment.put_metadata(key, value, namespace)
-    except Exception:
-        # Ignore if not in X-Ray context (e.g., during testing)
-        pass
+    # No-op when X-Ray is disabled
+    pass
 
 
 class MetricsCollector:

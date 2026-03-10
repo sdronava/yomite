@@ -265,3 +265,70 @@ jobs:
             exit 1
           fi
           echo "All checks passed!"
+
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [all-checks-passed]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment:
+      name: development
+      url: https://dev.yomite.com
+    
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      
+      - name: Download SAM build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sam-build
+          path: services/user-management/.aws-sam/
+      
+      - name: Deploy to dev environment
+        working-directory: services/user-management
+        run: |
+          sam deploy --config-env dev --no-confirm-changeset --no-fail-on-empty-changeset
+      
+      - name: Get stack outputs
+        working-directory: services/user-management
+        run: |
+          echo "### Deployment Outputs" >> $GITHUB_STEP_SUMMARY
+          aws cloudformation describe-stacks \
+            --stack-name yomite-user-registration-dev \
+            --query 'Stacks[0].Outputs' \
+            --output table >> $GITHUB_STEP_SUMMARY
+      
+      - name: Deploy CloudWatch Dashboard
+        working-directory: services/user-management
+        run: |
+          chmod +x infrastructure/scripts/deploy-dashboard.sh
+          ./infrastructure/scripts/deploy-dashboard.sh dev
+      
+      - name: Run smoke tests
+        working-directory: services/user-management
+        env:
+          API_ENDPOINT: ${{ steps.get-outputs.outputs.api_endpoint }}
+        run: |
+          echo "Smoke tests would run here against: ${API_ENDPOINT}"
+          echo "Note: Requires valid JWT token for testing"

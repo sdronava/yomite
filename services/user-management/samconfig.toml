@@ -36,6 +36,20 @@ s3_prefix = "yomite-user-registration-dev"
 region = "us-east-1"
 parameter_overrides = "Environment=dev LogLevel=DEBUG"
 confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+
+# Note: Before deploying, ensure OAuth secrets exist in AWS Secrets Manager:
+# - yomite/oauth/google (with keys: client_id, client_secret)
+# - yomite/oauth/facebook (with keys: client_id, client_secret)
+#
+# Create secrets with:
+# aws secretsmanager create-secret --name yomite/oauth/google \
+#   --secret-string '{"client_id":"YOUR_GOOGLE_CLIENT_ID","client_secret":"YOUR_GOOGLE_CLIENT_SECRET"}' \
+#   --region us-east-1
+#
+# aws secretsmanager create-secret --name yomite/oauth/facebook \
+#   --secret-string '{"client_id":"YOUR_FACEBOOK_APP_ID","client_secret":"YOUR_FACEBOOK_APP_SECRET"}' \
+#   --region us-east-1
 
 # Staging environment
 [staging]
