@@ -1,0 +1,153 @@
+name: User Management Service Deploy
+
+on:
+  push:
+    branches:
+      - develop  # Deploy to staging
+      - main     # Deploy to production
+    paths:
+      - 'services/user-management/**'
+      - '.github/workflows/user-management-deploy.yml'
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+defaults:
+  run:
+    working-directory: services/user-management
+
+jobs:
+  determine-environment:
+    name: Determine Deployment Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+    
+    steps:
+      - name: Set environment based on branch or input
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+  deploy:
+    name: Deploy to ${{ needs.determine-environment.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    environment: ${{ needs.determine-environment.outputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      
+      - name: Build SAM application
+        run: |
+          sam build
+      
+      - name: Deploy to ${{ needs.determine-environment.outputs.environment }}
+        run: |
+          sam deploy \
+            --config-env ${{ needs.determine-environment.outputs.environment }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+      
+      - name: Get stack outputs
+        id: stack-outputs
+        run: |
+          STACK_NAME="yomite-user-management-${{ needs.determine-environment.outputs.environment }}"
+          
+          API_ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name $STACK_NAME \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
+            --output text)
+          
+          USER_POOL_ID=$(aws cloudformation describe-stacks \
+            --stack-name $STACK_NAME \
+            --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' \
+            --output text)
+          
+          echo "api_endpoint=$API_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "user_pool_id=$USER_POOL_ID" >> $GITHUB_OUTPUT
+      
+      - name: Run smoke tests
+        run: |
+          echo "API Endpoint: ${{ steps.stack-outputs.outputs.api_endpoint }}"
+          echo "User Pool ID: ${{ steps.stack-outputs.outputs.user_pool_id }}"
+          
+          # Basic health check (will return 401 without auth, which is expected)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.stack-outputs.outputs.api_endpoint }}/profile || echo "000")
+          
+          if [ "$HTTP_CODE" == "401" ] || [ "$HTTP_CODE" == "403" ]; then
+            echo "✓ API is responding (authentication required as expected)"
+          else
+            echo "✗ Unexpected response code: $HTTP_CODE"
+            exit 1
+          fi
+      
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## Deployment Summary
+          
+          **Environment**: ${{ needs.determine-environment.outputs.environment }}
+          **Stack Name**: yomite-user-management-${{ needs.determine-environment.outputs.environment }}
+          **Region**: ${{ vars.AWS_REGION || 'us-east-1' }}
+          
+          ### Outputs
+          - **API Endpoint**: ${{ steps.stack-outputs.outputs.api_endpoint }}
+          - **User Pool ID**: ${{ steps.stack-outputs.outputs.user_pool_id }}
+          
+          ### Next Steps
+          1. Configure OAuth providers in Cognito User Pool
+          2. Test authentication flow via Cognito Hosted UI
+          3. Verify API endpoints with valid JWT tokens
+          EOF
+
+  notify-deployment:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [determine-environment, deploy]
+    if: always()
+    
+    steps:
+      - name: Deployment succeeded
+        if: needs.deploy.result == 'success'
+        run: |
+          echo "✓ Deployment to ${{ needs.determine-environment.outputs.environment }} succeeded"
+      
+      - name: Deployment failed
+        if: needs.deploy.result == 'failure'
+        run: |
+          echo "✗ Deployment to ${{ needs.determine-environment.outputs.environment }} failed"
+          exit 1

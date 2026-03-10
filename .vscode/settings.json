@@ -1,3 +1,4 @@
 {
-    "kiroAgent.configureMCP": "Enabled"
+    "kiroAgent.configureMCP": "Enabled",
+    "workbench.colorTheme": "Kiro Dark"
 }

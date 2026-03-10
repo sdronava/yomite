@@ -1,0 +1,68 @@
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "yomite-user-registration"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+
+[default.package.parameters]
+resolve_s3 = true
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+# Development environment
+[dev]
+[dev.deploy.parameters]
+stack_name = "yomite-user-registration-dev"
+s3_prefix = "yomite-user-registration-dev"
+region = "us-east-1"
+parameter_overrides = "Environment=dev LogLevel=DEBUG"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+
+# Note: Before deploying, ensure OAuth secrets exist in AWS Secrets Manager:
+# - yomite/oauth/google (with keys: client_id, client_secret)
+# - yomite/oauth/facebook (with keys: client_id, client_secret)
+#
+# Create secrets with:
+# aws secretsmanager create-secret --name yomite/oauth/google \
+#   --secret-string '{"client_id":"YOUR_GOOGLE_CLIENT_ID","client_secret":"YOUR_GOOGLE_CLIENT_SECRET"}' \
+#   --region us-east-1
+#
+# aws secretsmanager create-secret --name yomite/oauth/facebook \
+#   --secret-string '{"client_id":"YOUR_FACEBOOK_APP_ID","client_secret":"YOUR_FACEBOOK_APP_SECRET"}' \
+#   --region us-east-1
+
+# Staging environment
+[staging]
+[staging.deploy.parameters]
+stack_name = "yomite-user-registration-staging"
+s3_prefix = "yomite-user-registration-staging"
+region = "us-east-1"
+parameter_overrides = "Environment=staging LogLevel=INFO"
+
+# Production environment
+[prod]
+[prod.deploy.parameters]
+stack_name = "yomite-user-registration-prod"
+s3_prefix = "yomite-user-registration-prod"
+region = "us-east-1"
+parameter_overrides = "Environment=prod LogLevel=WARNING"

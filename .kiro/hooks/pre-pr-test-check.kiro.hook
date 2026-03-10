@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Run Tests Before PR",
+  "description": "Ensures all setup tests pass before allowing a PR to be raised",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "cd services/user-management && pytest --cov=src --cov-report=term-missing -v"
+  }
+}

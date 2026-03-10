@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: User Registration Service - Serverless Architecture
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+    Description: Lambda function log level
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Architectures:
+      - arm64
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: !Ref LogLevel
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub yomite-users-${Environment}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UserPoolTags:
+        Environment: !Ref Environment
+        Service: user-registration
+
+  # Cognito User Pool Domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub yomite-${Environment}-${AWS::AccountId}
+      UserPoolId: !Ref UserPool
+
+  # Cognito User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub yomite-web-client-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - Google
+        - Facebook
+        - COGNITO
+      CallbackURLs:
+        - !If 
+          - IsProduction
+          - https://app.yomite.com/callback
+          - http://localhost:3000/callback
+      LogoutURLs:
+        - !If
+          - IsProduction
+          - https://app.yomite.com/logout
+          - http://localhost:3000/logout
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      PreventUserExistenceErrors: ENABLED
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+
+  # Google Identity Provider
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Sub '{{resolve:secretsmanager:yomite/oauth/google:SecretString:client_id}}'
+        client_secret: !Sub '{{resolve:secretsmanager:yomite/oauth/google:SecretString:client_secret}}'
+        authorize_scopes: email openid profile
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+        username: sub
+
+  # Facebook Identity Provider
+  FacebookIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Facebook
+      ProviderType: Facebook
+      ProviderDetails:
+        client_id: !Sub '{{resolve:secretsmanager:yomite/oauth/facebook:SecretString:client_id}}'
+        client_secret: !Sub '{{resolve:secretsmanager:yomite/oauth/facebook:SecretString:client_secret}}'
+        authorize_scopes: email public_profile
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+        username: id
+
+  # DynamoDB Table (simplified - no session storage needed)
+  UserDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub yomite-user-data-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [IsProduction, true, false]
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: user-registration
+
+  # Lambda Functions
+  UserProfileHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub user-profile-handler-${Environment}
+      CodeUri: src/
+      Handler: handlers.profile_handler.lambda_handler
+      Description: Handle user profile operations
+      MemorySize: 256
+      Timeout: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserDataTable
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref UserDataTable
+          USER_POOL_ID: !Ref UserPool
+      Events:
+        GetProfile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UserRegistrationApi
+            Path: /profile
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+        UpdateProfile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UserRegistrationApi
+            Path: /profile
+            Method: PUT
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  # API Gateway with Cognito Authorizer
+  UserRegistrationApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              Audience:
+                - !Ref UserPoolClient
+              Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+        DefaultAuthorizer: CognitoAuthorizer
+
+  # CloudWatch Log Groups
+  UserProfileHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/user-profile-handler-${Environment}
+      RetentionInDays: !If [IsProduction, 30, 7]
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, prod]
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${UserRegistrationApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiEndpoint
+
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolId
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolClientId
+
+  UserPoolDomain:
+    Description: Cognito User Pool Domain
+    Value: !Sub ${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
+    Export:
+      Name: !Sub ${AWS::StackName}-UserPoolDomain
+
+  DynamoDBTableName:
+    Description: DynamoDB table name
+    Value: !Ref UserDataTable
+    Export:
+      Name: !Sub ${AWS::StackName}-TableName
+
+  DynamoDBTableArn:
+    Description: DynamoDB table ARN
+    Value: !GetAtt UserDataTable.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-TableArn

@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Coverage Check Before Push",
+  "description": "Runs pytest with coverage reporting to ensure test coverage meets project standards before changes are pushed",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "cd services/user-management && pytest --cov=src --cov-report=term-missing --cov-fail-under=80",
+    "timeout": 120
+  }
+}
