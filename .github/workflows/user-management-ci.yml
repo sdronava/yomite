@@ -230,6 +230,10 @@ jobs:
     needs: [lint-and-format, type-check, security-scan, unit-tests, integration-tests, build-sam]
     if: always()
     
+    defaults:
+      run:
+        working-directory: .
+    
     steps:
       - name: Check if all jobs passed
         run: |
