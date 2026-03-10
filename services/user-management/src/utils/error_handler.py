@@ -164,7 +164,7 @@ def create_api_error_response(error: APIError, request_id: str = "") -> dict:
     response = {"success": False, "error": {"code": error.code, "message": error.message}}
 
     if error.details:
-        response["error"]["details"] = error.details
+        response["error"]["details"] = error.details  # type: ignore[index]
 
     if request_id:
         response["request_id"] = request_id

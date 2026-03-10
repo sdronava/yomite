@@ -36,7 +36,7 @@ class StructuredLogger:
 
         # Configure Python logger
         self.logger = logging.getLogger(service_name)
-        self.logger.setLevel(getattr(logging, self.log_level.upper()))
+        self.logger.setLevel(getattr(logging, self.log_level.upper()))  # type: ignore[union-attr]
 
         # Remove existing handlers
         self.logger.handlers = []
@@ -91,9 +91,9 @@ class StructuredLogger:
             if key.lower() in {k.lower() for k in sensitive_keys}:
                 sanitized[key] = "***REDACTED***"
             elif isinstance(value, dict):
-                sanitized[key] = self._sanitize_data(value)
+                sanitized[key] = self._sanitize_data(value)  # type: ignore[assignment]
             elif isinstance(value, str):
-                sanitized[key] = self._sanitize_message(value)
+                sanitized[key] = self._sanitize_message(value)  # type: ignore[assignment]
             else:
                 sanitized[key] = value
 
@@ -121,7 +121,7 @@ class StructuredLogger:
 
         # Add sanitized additional data
         if kwargs:
-            log_entry["data"] = self._sanitize_data(kwargs)
+            log_entry["data"] = self._sanitize_data(kwargs)  # type: ignore[assignment]
 
         # Log as JSON
         log_method = getattr(self.logger, level.lower())

@@ -126,7 +126,7 @@ class DynamoDBClient:
                 if index_name:
                     kwargs["IndexName"] = index_name
 
-                response = self.table.query(**kwargs)
+                response = self.table.query(**kwargs)  # type: ignore[arg-type]
                 items = response.get("Items", [])
                 logger.debug(f"Query: Index={index_name}, Count={len(items)}")
                 return items
@@ -178,7 +178,7 @@ class DynamoDBClient:
                 if expression_attribute_names:
                     kwargs["ExpressionAttributeNames"] = expression_attribute_names
 
-                response = self.table.update_item(**kwargs)
+                response = self.table.update_item(**kwargs)  # type: ignore[arg-type]
                 logger.debug(f"Update item: PK={pk}, SK={sk}")
                 return response.get("Attributes", {})
             except ClientError as e:
