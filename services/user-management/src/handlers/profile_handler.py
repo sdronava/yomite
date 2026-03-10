@@ -10,6 +10,14 @@ from models.error_codes import ErrorCodes
 from utils.logger import StructuredLogger
 from utils.dynamodb_client import DynamoDBClient
 from utils.error_handler import handle_dynamodb_error
+from utils.monitoring import (
+    trace_function,
+    track_operation,
+    add_trace_annotation,
+    add_trace_metadata,
+    track_cognito_authorization,
+    track_cognito_authorization_failure,
+)
 
 # Initialize logger
 logger = StructuredLogger(service_name="user-profile-handler")
@@ -42,6 +50,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     request_id = context.request_id if hasattr(context, "request_id") else "local"
     http_method = event.get("requestContext", {}).get("http", {}).get("method", "UNKNOWN")
 
+    # Add X-Ray annotations
+    add_trace_annotation("request_id", request_id)
+    add_trace_annotation("http_method", http_method)
+
     logger.info("profile_request", "Profile request received", request_id=request_id, method=http_method)
 
     try:
@@ -50,6 +62,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if not authorizer_claims:
             logger.warning("missing_cognito_claims", "No Cognito claims found in request", request_id=request_id)
+            track_cognito_authorization_failure("MissingClaims")
             return format_error_response(
                 status_code=401,
                 error_code=ErrorCodes.UNAUTHORIZED,
@@ -57,7 +70,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 request_id=request_id,
             )
 
+        # Track successful authorization
+        track_cognito_authorization()
+
         user_context = CognitoUserContext.from_authorizer_claims(authorizer_claims)
+
+        # Add user context to trace
+        add_trace_annotation("user_id", user_context.sub)
+        add_trace_metadata("user_email", user_context.email)
 
         # Route to appropriate handler
         if http_method == "GET":
@@ -92,6 +112,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
 
+@trace_function("get_profile")
+@track_operation("GetProfile", {"Operation": "Read"})
 def handle_get_profile(user_context: CognitoUserContext, request_id: str) -> Dict[str, Any]:
     """
     Get user profile from DynamoDB.
@@ -175,6 +197,8 @@ def handle_get_profile(user_context: CognitoUserContext, request_id: str) -> Dic
         return handle_dynamodb_error(e, request_id)
 
 
+@trace_function("update_profile")
+@track_operation("UpdateProfile", {"Operation": "Write"})
 def handle_update_profile(user_context: CognitoUserContext, body: Dict[str, Any], request_id: str) -> Dict[str, Any]:
     """
     Update user profile in DynamoDB.
