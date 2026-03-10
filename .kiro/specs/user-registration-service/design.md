@@ -1,53 +1,59 @@
-# Design Document: User Registration Service (Serverless)
+# Design Document: User Registration Service (Serverless with Cognito)
 
 ## Overview
 
-The User Registration Service (Serverless) provides secure user identity management for the Yomite application through social login integration using a fully serverless, pay-per-use architecture. This design is a cost-optimized alternative to the Fargate-based design, targeting <$50/month for the current capacity requirements while maintaining all functional requirements and security features.
+The User Registration Service provides secure user identity management for the Yomite application through AWS Cognito User Pools with social login integration. This serverless, managed authentication solution eliminates custom OAuth implementation complexity while maintaining security and cost efficiency.
 
 ### Goals
 
-- Enable frictionless user onboarding through social login providers
-- Provide secure session management with token-based authentication
-- Support account linking for users with multiple social identities
+- Enable frictionless user onboarding through social login providers (Google, Facebook, GitHub)
+- Leverage AWS Cognito for managed authentication and session management
+- Eliminate custom OAuth and session management code
 - Maintain security best practices including rate limiting, encryption, and HTTPS enforcement
-- Achieve significant cost reduction through serverless architecture (<$50/month vs ~$220/month)
-- Leverage AWS Free Tier benefits (1M Lambda requests, 25 GB DynamoDB storage)
-- Enable local development with production-like behavior
-- Maintain same correctness properties as Fargate-based design
+- Achieve cost efficiency through serverless architecture (<$50/month target)
+- Leverage AWS Free Tier benefits (Cognito 50 MAU free, Lambda 1M requests)
+- Enable local development with Cognito Local or mocked authentication
+- Simplify implementation by using managed AWS services
 
 ### Non-Goals
 
-- Password-based authentication (social login only)
-- Multi-factor authentication (future enhancement)
+- Password-based authentication (social login only via Cognito)
+- Multi-factor authentication (future enhancement, Cognito supports it)
 - User profile management beyond basic identity (separate service)
-- Email verification workflows (delegated to social providers)
+- Email verification workflows (delegated to social providers via Cognito)
+- Custom OAuth implementation (using Cognito's managed OAuth)
 
-### Key Differences from Fargate Design
+### Key Architecture Decisions
 
-**Architecture Changes:**
-- AWS Lambda functions instead of ECS Fargate containers
-- DynamoDB instead of RDS PostgreSQL
-- DynamoDB with TTL instead of ElastiCache Redis
-- API Gateway instead of ALB + custom gateway
-- No always-on infrastructure costs
+**Authentication Approach:**
+- AWS Cognito User Pools for user management and authentication
+- Cognito Hosted UI or SDK for social login flows
+- JWT tokens (ID, Access, Refresh) instead of custom session tokens
+- API Gateway Cognito Authorizer for automatic token validation
+- No custom OAuth client code needed
+
+**Session Management:**
+- JWT-based (stateless) instead of server-side sessions
+- No DynamoDB session storage needed
+- Cognito handles token issuance, validation, and refresh
+- API Gateway validates tokens before Lambda invocation
 
 **Cost Optimization:**
-- Pay-per-request pricing model
-- No idle capacity costs
-- Automatic scaling without pre-provisioning
-- Single-table DynamoDB design for cost efficiency
-- Leverages AWS Free Tier extensively
+- Cognito: ~$5-10/month (MAU pricing, 50 MAU free tier)
+- No session storage costs (stateless JWT)
+- Reduced Lambda invocations (no validation handler needed)
+- Total: ~$15-25/month vs ~$23/month custom implementation
 
 **Trade-offs:**
-- Cold start latency (mitigated with provisioned concurrency for critical functions)
-- DynamoDB query patterns require careful design
-- Lambda execution time limits (15 minutes max, typically <5 seconds needed)
-- Eventual consistency considerations for DynamoDB
+- AWS vendor lock-in for authentication (acceptable for cost savings)
+- Harder to revoke tokens immediately (need token blacklist if required)
+- Client-side token storage (XSS mitigation needed - TODO)
+- Less control over token format (standard JWT)
 
 
 ## Architecture
 
-### High-Level Serverless Architecture
+### High-Level Serverless Architecture with Cognito
 
 ```mermaid
 graph TB
@@ -55,15 +61,18 @@ graph TB
         FC[Frontend Client<br/>React/Vue/TypeScript]
     end
     
+    subgraph "Authentication Layer"
+        COG[AWS Cognito User Pool<br/>Social Login Integration]
+        COGUI[Cognito Hosted UI<br/>or SDK]
+    end
+    
     subgraph "API Layer"
-        APIGW[API Gateway<br/>HTTPS/Rate Limiting/CORS]
+        APIGW[API Gateway<br/>Cognito Authorizer<br/>HTTPS/Rate Limiting/CORS]
     end
     
     subgraph "Compute Layer - Lambda Functions"
-        LR[Registration Lambda<br/>Python 3]
-        LA[Authentication Lambda<br/>Python 3]
-        LS[Session Lambda<br/>Python 3]
-        LV[Validation Lambda<br/>Python 3]
+        LP[Profile Lambda<br/>User profile operations]
+        LB[Business Logic Lambda<br/>Application-specific logic]
     end
     
     subgraph "External Services"
@@ -73,31 +82,65 @@ graph TB
     end
     
     subgraph "Data Layer"
-        DDB[(DynamoDB<br/>Single Table Design)]
+        DDB[(DynamoDB<br/>User Profiles & App Data)]
     end
     
-    subgraph "Secrets & Config"
-        SM[Secrets Manager<br/>OAuth Credentials]
-        SSM[Parameter Store<br/>Configuration]
-    end
+    FC -->|1. Login Request| COGUI
+    COGUI -->|2. OAuth Flow| COG
+    COG -->|3. Authenticate| SP1
+    COG -->|3. Authenticate| SP2
+    COG -->|3. Authenticate| SP3
+    COG -->|4. JWT Tokens| FC
     
-    FC -->|HTTPS| APIGW
-    APIGW -->|Invoke| LR
-    APIGW -->|Invoke| LA
-    APIGW -->|Invoke| LS
-    APIGW -->|Invoke| LV
+    FC -->|5. API Call + JWT| APIGW
+    APIGW -->|6. Validate JWT| COG
+    APIGW -->|7. Invoke with User Context| LP
+    APIGW -->|7. Invoke with User Context| LB
     
-    LR -->|OAuth Flow| SP1
-    LR -->|OAuth Flow| SP2
-    LR -->|OAuth Flow| SP3
-    LA -->|OAuth Flow| SP1
-    LA -->|OAuth Flow| SP2
-    LA -->|OAuth Flow| SP3
+    LP -->|Read/Write| DDB
+    LB -->|Read/Write| DDB
     
-    LR -->|Read/Write| DDB
-    LA -->|Read/Write| DDB
-    LS -->|Read/Write| DDB
-    LV -->|Read| DDB
+    style COG fill:#ff9900
+    style APIGW fill:#fff4e1
+    style FC fill:#e1f5ff
+    style LP fill:#e8f5e9
+    style LB fill:#e8f5e9
+    style DDB fill:#f3e5f5
+```
+
+### Authentication Flow
+
+**User Registration/Login:**
+1. User clicks "Login with Google/Facebook/GitHub" in frontend
+2. Frontend redirects to Cognito Hosted UI or uses Cognito SDK
+3. Cognito handles OAuth flow with social provider
+4. Social provider authenticates user and returns to Cognito
+5. Cognito creates/updates user in User Pool
+6. Cognito returns JWT tokens to frontend:
+   - **ID Token**: User identity information (email, name, etc.)
+   - **Access Token**: API authorization (1 hour default)
+   - **Refresh Token**: Get new access tokens (30 days default)
+7. Frontend stores tokens securely (memory, secure storage, httpOnly cookies)
+
+**API Requests:**
+1. Frontend includes Access Token in Authorization header
+2. API Gateway Cognito Authorizer validates JWT automatically
+3. If valid, API Gateway invokes Lambda with user context
+4. Lambda receives user info (sub, email, etc.) in event
+5. Lambda executes business logic
+6. Response returned to frontend
+
+**Token Refresh:**
+1. When Access Token expires, frontend uses Refresh Token
+2. Cognito issues new Access Token
+3. Frontend continues making API calls
+
+**No Custom Code Needed For:**
+- OAuth flows (Cognito handles)
+- Token generation (Cognito handles)
+- Token validation (API Gateway handles)
+- Token refresh (Cognito handles)
+- Session storage (stateless JWT)
     
     LR -.->|Get Secrets| SM
     LA -.->|Get Secrets| SM

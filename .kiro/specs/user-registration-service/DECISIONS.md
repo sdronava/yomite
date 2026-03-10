@@ -732,6 +732,140 @@ When ready to extract a service:
 
 ---
 
+## Decision 12: AWS Cognito for Authentication
+
+**Date:** 2026-03-09
+
+**Status:** Accepted
+
+**Context:**
+- Initial design used custom OAuth implementation with social providers
+- Custom session management with DynamoDB storage
+- OAuth client code complexity and maintenance burden
+- Cost and operational overhead of custom implementation
+- Need for secure, scalable authentication
+
+**Decision:**
+Switch from custom OAuth implementation to AWS Cognito User Pools for authentication and session management.
+
+**Rationale:**
+1. **Reduced Complexity:**
+   - Cognito handles OAuth flows with social providers automatically
+   - No need to implement OAuth client manager
+   - No custom session management code needed
+   - Eliminates ~500+ lines of OAuth and session code
+
+2. **Better Security:**
+   - Industry-standard JWT tokens
+   - Built-in token validation and refresh
+   - Managed security updates by AWS
+   - Automatic HTTPS enforcement
+
+3. **Cost Efficiency:**
+   - Cognito: ~$5-10/month for current target (MAU pricing)
+   - Eliminates DynamoDB session storage costs
+   - Eliminates validation Lambda invocations
+   - Similar total cost to custom implementation
+
+4. **Operational Simplicity:**
+   - No OAuth credential management in Secrets Manager
+   - API Gateway Cognito Authorizer validates tokens automatically
+   - Built-in user management UI
+   - Automatic token rotation and refresh
+
+5. **Faster Development:**
+   - Eliminates Tasks 6-7 (OAuth client, session manager)
+   - Simpler Lambda handlers (no OAuth code)
+   - Faster time to market
+
+**Architecture Changes:**
+
+**Before (Custom OAuth):**
+```
+Frontend → API Gateway → Lambda (OAuth) → Social Providers
+                      → Lambda (Session) → DynamoDB (sessions)
+```
+
+**After (Cognito):**
+```
+Frontend → Cognito (OAuth) → Social Providers
+        → API Gateway (Cognito Authorizer) → Lambda (business logic)
+```
+
+**Session Management:**
+- **Before:** Custom session tokens stored in DynamoDB, validated on every request
+- **After:** JWT tokens (ID, Access, Refresh) issued by Cognito, validated by API Gateway
+
+**Token Flow:**
+1. User authenticates via Cognito Hosted UI or SDK
+2. Cognito returns JWT tokens (ID token, Access token, Refresh token)
+3. Frontend stores tokens (secure storage, httpOnly cookies)
+4. API calls include Access token in Authorization header
+5. API Gateway validates JWT automatically (no Lambda code)
+6. Lambda receives validated user info in event context
+
+**Consequences:**
+
+*Positive:*
+- Eliminates OAuth client manager implementation
+- Eliminates custom session manager implementation
+- No DynamoDB session storage needed
+- Faster token validation (JWT signature vs DB query)
+- Built-in token refresh mechanism
+- Reduced Lambda code and complexity
+- Industry-standard authentication
+
+*Negative:*
+- AWS vendor lock-in for authentication
+- Harder to revoke tokens immediately (need token blacklist)
+- Client-side token storage (XSS risk - mitigated separately)
+- Less control over token format and claims
+- Cognito Hosted UI customization limitations
+
+*Mitigations:*
+- XSS protection: httpOnly cookies, CSP headers, input sanitization (TODO)
+- Token revocation: Implement token blacklist in DynamoDB if needed
+- Custom UI: Use Cognito SDK instead of Hosted UI for full control
+- Vendor lock-in: Keep business logic separate from auth layer
+
+**Cost Comparison:**
+
+*Custom OAuth (Original):*
+- Lambda (OAuth + Session): ~$5/month
+- DynamoDB (sessions): ~$1/month
+- Secrets Manager (OAuth creds): ~$1/month
+- Total: ~$7/month
+
+*Cognito:*
+- Cognito User Pools: ~$5-10/month (MAU pricing, 50 MAU free tier)
+- Lambda (business logic only): ~$3/month
+- No session storage needed
+- Total: ~$8-13/month
+
+**Net difference: +$1-6/month, but significantly less code and complexity**
+
+**Implementation Changes:**
+1. Remove OAuth client manager code
+2. Remove session manager code
+3. Remove session-related DynamoDB items
+4. Add Cognito User Pool to SAM template
+5. Add Cognito Authorizer to API Gateway
+6. Update Lambda handlers to use Cognito user context
+7. Update data models (remove Session, add Cognito user attributes)
+8. Update frontend to use Cognito SDK
+
+**Alternatives Considered:**
+1. **Keep Custom OAuth:** More control but higher complexity
+2. **Auth0/Okta:** Third-party, higher cost, additional vendor
+3. **Firebase Auth:** Google-specific, not AWS-native
+
+**Review Trigger:**
+- If Cognito costs exceed $20/month
+- If token revocation becomes critical requirement
+- If need to migrate away from AWS
+
+---
+
 ## Future Decisions to Make
 
 ### 1. Multi-Factor Authentication (MFA)
