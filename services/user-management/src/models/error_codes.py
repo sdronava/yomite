@@ -11,8 +11,8 @@ class ErrorCodes:
     # Authorization errors
     UNAUTHORIZED = "UNAUTHORIZED"
     FORBIDDEN = "FORBIDDEN"
-    INVALID_TOKEN = "INVALID_TOKEN"
-    EXPIRED_TOKEN = "EXPIRED_TOKEN"
+    INVALID_TOKEN = "INVALID_TOKEN"  # nosec B105
+    EXPIRED_TOKEN = "EXPIRED_TOKEN"  # nosec B105
 
     # Resource errors
     NOT_FOUND = "NOT_FOUND"
