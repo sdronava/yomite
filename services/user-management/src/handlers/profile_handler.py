@@ -12,7 +12,7 @@ from utils.dynamodb_client import DynamoDBClient
 from utils.error_handler import handle_dynamodb_error
 
 # Initialize logger
-logger = StructuredLogger(service="user-profile-handler")
+logger = StructuredLogger(service_name="user-profile-handler")
 
 # Initialize DynamoDB client (reused across invocations)
 dynamodb_client = None
@@ -42,17 +42,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     request_id = context.request_id if hasattr(context, 'request_id') else 'local'
     http_method = event.get('requestContext', {}).get('http', {}).get('method', 'UNKNOWN')
     
-    logger.info(f"Profile request received", extra={
-        'request_id': request_id,
-        'method': http_method
-    })
+    logger.info("profile_request", "Profile request received", request_id=request_id, method=http_method)
     
     try:
         # Extract Cognito user context from API Gateway authorizer
         authorizer_claims = event.get('requestContext', {}).get('authorizer', {}).get('jwt', {}).get('claims', {})
         
         if not authorizer_claims:
-            logger.warning("No Cognito claims found in request", extra={'request_id': request_id})
+            logger.warning("missing_cognito_claims", "No Cognito claims found in request", request_id=request_id)
             return format_error_response(
                 status_code=401,
                 error_code=ErrorCodes.UNAUTHORIZED,
@@ -77,7 +74,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
     
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in request body", extra={'request_id': request_id, 'error': str(e)})
+        logger.error("invalid_json", "Invalid JSON in request body", request_id=request_id, error=str(e))
         return format_error_response(
             status_code=400,
             error_code=ErrorCodes.INVALID_INPUT,
@@ -86,10 +83,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
     
     except Exception as e:
-        logger.error(f"Unexpected error in profile handler", extra={
-            'request_id': request_id,
-            'error': str(e)
-        }, exc_info=True)
+        logger.error("unexpected_error", "Unexpected error in profile handler", request_id=request_id, error=str(e))
         return format_error_response(
             status_code=500,
             error_code=ErrorCodes.SERVER_ERROR,
@@ -123,10 +117,7 @@ def handle_get_profile(user_context: CognitoUserContext, request_id: str) -> Dic
         if item:
             # Profile exists, return it
             profile = UserProfile.from_dynamodb_item(item)
-            logger.info(f"Profile retrieved", extra={
-                'request_id': request_id,
-                'user_id': user_context.sub
-            })
+            logger.info("profile_retrieved", "Profile retrieved", request_id=request_id, user_id=user_context.sub)
             
             return format_success_response(
                 status_code=200,
@@ -157,10 +148,7 @@ def handle_get_profile(user_context: CognitoUserContext, request_id: str) -> Dic
             # Save to DynamoDB
             db_client.put_item(profile.to_dynamodb_item())
             
-            logger.info(f"Profile created from Cognito data", extra={
-                'request_id': request_id,
-                'user_id': user_context.sub
-            })
+            logger.info("profile_created", "Profile created from Cognito data", request_id=request_id, user_id=user_context.sub)
             
             return format_success_response(
                 status_code=200,
@@ -177,11 +165,7 @@ def handle_get_profile(user_context: CognitoUserContext, request_id: str) -> Dic
             )
     
     except Exception as e:
-        logger.error(f"Error retrieving profile", extra={
-            'request_id': request_id,
-            'user_id': user_context.sub,
-            'error': str(e)
-        }, exc_info=True)
+        logger.error("profile_retrieval_error", "Error retrieving profile", request_id=request_id, user_id=user_context.sub, error=str(e))
         
         return handle_dynamodb_error(e, request_id)
 
@@ -241,10 +225,7 @@ def handle_update_profile(
         # Save to DynamoDB
         db_client.put_item(profile.to_dynamodb_item())
         
-        logger.info(f"Profile updated", extra={
-            'request_id': request_id,
-            'user_id': user_context.sub
-        })
+        logger.info("profile_updated", "Profile updated", request_id=request_id, user_id=user_context.sub)
         
         return format_success_response(
             status_code=200,
@@ -261,11 +242,7 @@ def handle_update_profile(
         )
     
     except Exception as e:
-        logger.error(f"Error updating profile", extra={
-            'request_id': request_id,
-            'user_id': user_context.sub,
-            'error': str(e)
-        }, exc_info=True)
+        logger.error("profile_update_error", "Error updating profile", request_id=request_id, user_id=user_context.sub, error=str(e))
         
         return handle_dynamodb_error(e, request_id)
 

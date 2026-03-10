@@ -5,8 +5,8 @@ import time
 import functools
 from typing import Callable, Any, TypeVar, cast, Dict
 from botocore.exceptions import ClientError
-from src.models.error_codes import ErrorCodes
-from src.models.entities import APIError
+from models.error_codes import ErrorCodes
+from models.entities import APIError
 
 # Type variable for decorator
 F = TypeVar('F', bound=Callable[..., Any])

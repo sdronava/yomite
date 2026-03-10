@@ -65,16 +65,14 @@ class DynamoDBClient:
     
     def get_item(
         self, 
-        pk: str, 
-        sk: str, 
+        key: Dict[str, str], 
         retry_count: int = 3
     ) -> Optional[Dict[str, Any]]:
         """
         Get item from DynamoDB with retry logic.
         
         Args:
-            pk: Partition key value
-            sk: Sort key value
+            key: Dictionary with PK and SK keys
             retry_count: Number of retries for throttling
             
         Returns:
@@ -83,6 +81,9 @@ class DynamoDBClient:
         Raises:
             ClientError: If operation fails after retries
         """
+        pk = key.get('PK')
+        sk = key.get('SK')
+        
         for attempt in range(retry_count):
             try:
                 response = self.table.get_item(Key={'PK': pk, 'SK': sk})
